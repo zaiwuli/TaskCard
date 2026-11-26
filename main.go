@@ -54,22 +54,36 @@ type CardConfig struct {
 type ScheduleConfig struct {
 	Enabled          bool   `json:"enabled"`
 	Time             string `json:"time"`             // "HH:MM", e.g. "00:00"
-	Count            int    `json:"count"`            // e.g. 20
-	Suffix           string `json:"suffix"`           // e.g. "小红书"
+	Count            int    `json:"count"`            // default count per library, e.g. 20
+	Suffix           string `json:"suffix"`           // optional folder suffix
 	AutoResetOnEmpty bool   `json:"autoResetOnEmpty"` // true: start new round after all tasks exhausted
 	LastRunDate      string `json:"lastRunDate"`      // "YYYY-MM-DD"
-	LastRunTime      string `json:"lastRunTime"`      // RFC3339 or readable
+	LastRunTime      string `json:"lastRunTime"`
 	LastRunSummary   string `json:"lastRunSummary"`
 }
 
+type TaskLibrary struct {
+	ID        string   `json:"id"`
+	Name      string   `json:"name"`
+	Tasks     []string `json:"tasks"`
+	Remaining []string `json:"remaining"`
+	Round     int      `json:"round"`
+	Enabled   bool     `json:"enabled"` // whether included in scheduled batch generation
+	Count     int      `json:"count"`   // 0 = use global Schedule.Count
+}
+
 type AppState struct {
-	Tasks       []string       `json:"tasks"`
-	Remaining   []string       `json:"remaining"`
-	Round       int            `json:"round"`
-	NoRepeat    bool           `json:"noRepeat"`
-	CurrentTask string         `json:"currentTask"`
-	Card        CardConfig     `json:"card"`
-	Schedule    ScheduleConfig `json:"schedule"`
+	Libraries       []TaskLibrary  `json:"libraries"`
+	ActiveLibraryID string         `json:"activeLibraryId"`
+	NoRepeat        bool           `json:"noRepeat"`
+	CurrentTask     string         `json:"currentTask"`
+	Card            CardConfig     `json:"card"`
+	Schedule        ScheduleConfig `json:"schedule"`
+
+	// Legacy fields for seamless migration from v1 state.json
+	LegacyTasks     []string `json:"tasks,omitempty"`
+	LegacyRemaining []string `json:"remaining,omitempty"`
+	LegacyRound     int      `json:"round,omitempty"`
 }
 
 type Store struct {
@@ -84,11 +98,11 @@ type Store struct {
 
 func defaultState() AppState {
 	tasks := []string{
-		"整理今天的待办清单",
-		"阅读 20 分钟",
-		"站起来活动拉伸 5 分钟",
-		"喝一杯温水",
-		"清理桌面和下载文件夹",
+		"今日自律打卡\n早起喝一杯温水\n记录当下感受",
+		"整理手机相册\n删掉 20 张不需要的照片",
+		"读完一本书的任意一个章节\n写 1 句话总结",
+		"晚饭后出门散步 20 分钟\n全程不看手机",
+		"清理电脑桌面和下载文件夹",
 	}
 	schedEnabled := strings.EqualFold(os.Getenv("SCHEDULE_ENABLED"), "true")
 	schedTime := os.Getenv("SCHEDULE_TIME")
@@ -102,10 +116,19 @@ func defaultState() AppState {
 	schedSuffix := strings.TrimSpace(os.Getenv("SCHEDULE_SUFFIX"))
 
 	return AppState{
-		Tasks:     tasks,
-		Remaining: shuffleStrings(tasks),
-		Round:     1,
-		NoRepeat:  true,
+		Libraries: []TaskLibrary{
+			{
+				ID:        "lib-1",
+				Name:      "1号库",
+				Tasks:     tasks,
+				Remaining: shuffleStrings(tasks),
+				Round:     1,
+				Enabled:   true,
+				Count:     0,
+			},
+		},
+		ActiveLibraryID: "lib-1",
+		NoRepeat:        true,
 		Card: CardConfig{
 			Ratio:       "1080x1440",
 			CustomW:     1080,
@@ -152,11 +175,17 @@ func shuffleStrings(src []string) []string {
 	return out
 }
 
+func normalizeTaskText(s string) string {
+	s = strings.ReplaceAll(s, "\r\n", "\n")
+	s = strings.ReplaceAll(s, "\r", "\n")
+	return strings.TrimSpace(s)
+}
+
 func cleanTaskList(in []string) []string {
 	seen := make(map[string]struct{}, len(in))
 	out := make([]string, 0, len(in))
 	for _, s := range in {
-		s = strings.TrimSpace(s)
+		s = normalizeTaskText(s)
 		if s == "" {
 			continue
 		}
@@ -188,8 +217,56 @@ func newStore(dataDir, outputDir, fontsDir string) (*Store, error) {
 	if raw, err := os.ReadFile(st.statePath); err == nil {
 		var loaded AppState
 		if err := json.Unmarshal(raw, &loaded); err == nil {
-			if loaded.Round <= 0 {
-				loaded.Round = 1
+			// Migrate legacy single-list state to library "1号库"
+			if len(loaded.Libraries) == 0 && len(loaded.LegacyTasks) > 0 {
+				round := loaded.LegacyRound
+				if round <= 0 {
+					round = 1
+				}
+				rem := loaded.LegacyRemaining
+				if rem == nil {
+					rem = shuffleStrings(loaded.LegacyTasks)
+				}
+				loaded.Libraries = []TaskLibrary{
+					{
+						ID:        "lib-1",
+						Name:      "1号库",
+						Tasks:     cleanTaskList(loaded.LegacyTasks),
+						Remaining: rem,
+						Round:     round,
+						Enabled:   true,
+						Count:     0,
+					},
+				}
+				loaded.ActiveLibraryID = "lib-1"
+			}
+			loaded.LegacyTasks = nil
+			loaded.LegacyRemaining = nil
+			loaded.LegacyRound = 0
+
+			if len(loaded.Libraries) == 0 {
+				loaded.Libraries = defaultState().Libraries
+				loaded.ActiveLibraryID = loaded.Libraries[0].ID
+			}
+			for i := range loaded.Libraries {
+				if loaded.Libraries[i].ID == "" {
+					loaded.Libraries[i].ID = fmt.Sprintf("lib-%d", i+1)
+				}
+				if strings.TrimSpace(loaded.Libraries[i].Name) == "" {
+					loaded.Libraries[i].Name = fmt.Sprintf("%d号库", i+1)
+				}
+				if loaded.Libraries[i].Round <= 0 {
+					loaded.Libraries[i].Round = 1
+				}
+				if loaded.Libraries[i].Tasks == nil {
+					loaded.Libraries[i].Tasks = []string{}
+				}
+				if loaded.Libraries[i].Remaining == nil {
+					loaded.Libraries[i].Remaining = []string{}
+				}
+			}
+			if loaded.ActiveLibraryID == "" {
+				loaded.ActiveLibraryID = loaded.Libraries[0].ID
 			}
 			if loaded.Schedule.Time == "" {
 				loaded.Schedule.Time = "00:00"
@@ -198,6 +275,7 @@ func newStore(dataDir, outputDir, fontsDir string) (*Store, error) {
 				loaded.Schedule.Count = 20
 			}
 			st.state = loaded
+			_ = st.saveLocked()
 		}
 	} else {
 		_ = st.saveLocked()
@@ -208,6 +286,9 @@ func newStore(dataDir, outputDir, fontsDir string) (*Store, error) {
 }
 
 func (s *Store) saveLocked() error {
+	s.state.LegacyTasks = nil
+	s.state.LegacyRemaining = nil
+	s.state.LegacyRound = 0
 	raw, err := json.MarshalIndent(s.state, "", "  ")
 	if err != nil {
 		return err
@@ -219,9 +300,20 @@ func (s *Store) saveLocked() error {
 	return os.Rename(tmp, s.statePath)
 }
 
+func (s *Store) findLibraryLocked(id string) *TaskLibrary {
+	for i := range s.state.Libraries {
+		if s.state.Libraries[i].ID == id {
+			return &s.state.Libraries[i]
+		}
+	}
+	if len(s.state.Libraries) > 0 {
+		return &s.state.Libraries[0]
+	}
+	return nil
+}
+
 func (s *Store) loadBestFont() {
 	candidates := []string{}
-	// 1. User-mounted custom fonts in /fonts take priority
 	if entries, err := os.ReadDir(s.fontsDir); err == nil {
 		for _, e := range entries {
 			if e.IsDir() {
@@ -233,7 +325,6 @@ func (s *Store) loadBestFont() {
 			}
 		}
 	}
-	// 2. Common system CJK fonts (Alpine / Debian / Windows)
 	sysDirs := []string{
 		"/usr/share/fonts",
 		"/usr/local/share/fonts",
@@ -290,33 +381,33 @@ func (s *Store) loadBestFont() {
 			return
 		}
 	}
-	log.Printf("warning: no CJK ttf/otf/ttc font found in %s or system fonts; place a .ttf/.ttc file in /fonts for Chinese rendering", s.fontsDir)
+	log.Printf("warning: no CJK ttf/otf/ttc font found in %s or system fonts", s.fontsDir)
 }
 
-func (s *Store) drawOneLocked() (string, bool) {
-	if len(s.state.Tasks) == 0 {
+func (s *Store) drawOneFromLibLocked(lib *TaskLibrary) (string, bool) {
+	if lib == nil || len(lib.Tasks) == 0 {
 		return "", false
 	}
 	if !s.state.NoRepeat {
-		task := s.state.Tasks[cryptoRandInt(len(s.state.Tasks))]
+		task := lib.Tasks[cryptoRandInt(len(lib.Tasks))]
 		s.state.CurrentTask = task
 		return task, true
 	}
-	if len(s.state.Remaining) == 0 {
+	if len(lib.Remaining) == 0 {
 		if !s.state.Schedule.AutoResetOnEmpty {
 			return "", false
 		}
-		s.state.Remaining = shuffleStrings(s.state.Tasks)
-		s.state.Round++
+		lib.Remaining = shuffleStrings(lib.Tasks)
+		lib.Round++
 	}
-	task := s.state.Remaining[0]
-	s.state.Remaining = s.state.Remaining[1:]
+	task := lib.Remaining[0]
+	lib.Remaining = lib.Remaining[1:]
 	s.state.CurrentTask = task
 	return task, true
 }
 
-func (s *Store) drawBatchLocked(count int) ([]string, int) {
-	if len(s.state.Tasks) == 0 || count <= 0 {
+func (s *Store) drawBatchFromLibLocked(lib *TaskLibrary, count int) ([]string, int) {
+	if lib == nil || len(lib.Tasks) == 0 || count <= 0 {
 		return nil, 0
 	}
 	picked := make([]string, 0, count)
@@ -324,36 +415,35 @@ func (s *Store) drawBatchLocked(count int) ([]string, int) {
 
 	for len(picked) < count {
 		if !s.state.NoRepeat {
-			task := s.state.Tasks[cryptoRandInt(len(s.state.Tasks))]
+			task := lib.Tasks[cryptoRandInt(len(lib.Tasks))]
 			picked = append(picked, task)
 			continue
 		}
-		if len(s.state.Remaining) == 0 {
+		if len(lib.Remaining) == 0 {
 			if !s.state.Schedule.AutoResetOnEmpty {
 				break
 			}
-			s.state.Remaining = shuffleStrings(s.state.Tasks)
-			s.state.Round++
+			lib.Remaining = shuffleStrings(lib.Tasks)
+			lib.Round++
 		}
-		// Pick first item in Remaining not already in this batch (if possible)
 		chosenIdx := 0
-		if len(s.state.Tasks) >= count {
-			for i, cand := range s.state.Remaining {
+		if len(lib.Tasks) >= count {
+			for i, cand := range lib.Remaining {
 				if _, dup := inBatch[cand]; !dup {
 					chosenIdx = i
 					break
 				}
 			}
 		}
-		task := s.state.Remaining[chosenIdx]
-		s.state.Remaining = append(s.state.Remaining[:chosenIdx], s.state.Remaining[chosenIdx+1:]...)
+		task := lib.Remaining[chosenIdx]
+		lib.Remaining = append(lib.Remaining[:chosenIdx], lib.Remaining[chosenIdx+1:]...)
 		picked = append(picked, task)
 		inBatch[task] = struct{}{}
 	}
 	if len(picked) > 0 {
 		s.state.CurrentTask = picked[len(picked)-1]
 	}
-	return picked, len(s.state.Remaining)
+	return picked, len(lib.Remaining)
 }
 
 func parseHexColor(hexStr string, fallback color.RGBA) color.RGBA {
@@ -525,7 +615,7 @@ func (s *Store) renderCardPNG(text, dateStr string, cfg CardConfig) ([]byte, err
 		case "top-left":
 			dx = margin
 			dy = margin + dAscent
-		default: // bottom-right
+		default:
 			dx = w - margin - dw
 			dy = h - margin
 		}
@@ -538,9 +628,6 @@ func (s *Store) renderCardPNG(text, dateStr string, cfg CardConfig) ([]byte, err
 		dateDrawer.DrawString(dateStr)
 	}
 
-	var buf strings.Builder
-	// Use bytes.Buffer via pipe? Better: simple custom writer or os.Pipe? No, use a byte slice buffer.
-	_ = buf
 	return encodePNG(img)
 }
 
@@ -566,6 +653,18 @@ func sanitizeSegment(s string) string {
 	return s
 }
 
+func formatDateFolder(dateStr, suffix string) string {
+	compact := strings.ReplaceAll(sanitizeSegment(dateStr), "-", "")
+	if compact == "" {
+		compact = time.Now().Format("20060102")
+	}
+	cleanSuffix := sanitizeSegment(suffix)
+	if cleanSuffix != "" {
+		return compact + "_" + cleanSuffix
+	}
+	return compact
+}
+
 func truncateRunes(s string, max int) string {
 	r := []rune(s)
 	if len(r) <= max {
@@ -574,71 +673,112 @@ func truncateRunes(s string, max int) string {
 	return string(r[:max])
 }
 
-func (s *Store) runBatch(count int, dateStr, suffix string, trigger string) (map[string]any, error) {
-	s.mu.Lock()
-	if count <= 0 {
-		count = s.state.Schedule.Count
-	}
-	if count <= 0 {
-		count = 20
-	}
+type libBatchJob struct {
+	libID   string
+	libName string
+	tasks   []string
+	rem     int
+	round   int
+}
+
+func (s *Store) runBatch(countOverride int, dateStr, suffix, onlyLibID, trigger string) (map[string]any, error) {
 	if dateStr == "" {
 		dateStr = time.Now().Format("2006-01-02")
 	}
+
+	s.mu.Lock()
 	if suffix == "" {
 		suffix = s.state.Schedule.Suffix
 	}
-	if suffix == "" {
-		suffix = s.state.Card.Suffix
+	defaultCount := s.state.Schedule.Count
+	if defaultCount <= 0 {
+		defaultCount = 20
 	}
 	cfg := s.state.Card
-	picked, rem := s.drawBatchLocked(count)
-	round := s.state.Round
+
+	jobs := make([]libBatchJob, 0, len(s.state.Libraries))
+	for i := range s.state.Libraries {
+		lib := &s.state.Libraries[i]
+		if onlyLibID != "" {
+			if lib.ID != onlyLibID {
+				continue
+			}
+		} else if !lib.Enabled {
+			continue
+		}
+		if len(lib.Tasks) == 0 {
+			continue
+		}
+		cnt := defaultCount
+		if lib.Count > 0 {
+			cnt = lib.Count
+		}
+		if countOverride > 0 {
+			cnt = countOverride
+		}
+		picked, rem := s.drawBatchFromLibLocked(lib, cnt)
+		if len(picked) > 0 {
+			jobs = append(jobs, libBatchJob{
+				libID:   lib.ID,
+				libName: lib.Name,
+				tasks:   picked,
+				rem:     rem,
+				round:   lib.Round,
+			})
+		}
+	}
 	s.mu.Unlock()
 
-	if len(picked) == 0 {
+	if len(jobs) == 0 {
 		return map[string]any{
 			"ok":        false,
-			"error":     "没有可抽取的任务（任务池为空或本轮已全部抽完且未开启自动新一轮）",
+			"error":     "没有可生成的任务（请检查任务库是否已开启且不为空，或本轮已抽完）",
 			"generated": 0,
-			"remaining": rem,
 		}, nil
 	}
 
-	folderName := sanitizeSegment(dateStr)
-	cleanSuffix := sanitizeSegment(suffix)
-	if cleanSuffix != "" {
-		folderName = folderName + "_" + cleanSuffix
-	}
-	targetDir := filepath.Join(s.outputDir, folderName)
-	if !strings.HasPrefix(targetDir, s.outputDir) {
-		return nil, fmt.Errorf("invalid target dir")
-	}
-	if err := os.MkdirAll(targetDir, 0o755); err != nil {
-		return nil, err
-	}
-
-	savedFiles := make([]string, 0, len(picked))
+	dateFolder := formatDateFolder(dateStr, suffix)
 	tsPrefix := time.Now().Format("150405")
-	for i, task := range picked {
-		pngBytes, err := s.renderCardPNG(task, dateStr, cfg)
-		if err != nil {
+	totalSaved := 0
+	partSummaries := make([]string, 0, len(jobs))
+	savedFiles := make([]string, 0)
+
+	for _, job := range jobs {
+		libFolder := sanitizeSegment(job.libName)
+		if libFolder == "" {
+			libFolder = sanitizeSegment(job.libID)
+		}
+		targetDir := filepath.Join(s.outputDir, dateFolder, libFolder)
+		if !strings.HasPrefix(targetDir, s.outputDir) {
+			return nil, fmt.Errorf("invalid target dir")
+		}
+		if err := os.MkdirAll(targetDir, 0o755); err != nil {
 			return nil, err
 		}
-		cleanTitle := truncateRunes(sanitizeSegment(task), 16)
-		if cleanTitle == "" {
-			cleanTitle = "task"
+
+		for idx, task := range job.tasks {
+			pngBytes, err := s.renderCardPNG(task, dateStr, cfg)
+			if err != nil {
+				return nil, err
+			}
+			firstLine := strings.Split(task, "\n")[0]
+			cleanTitle := truncateRunes(sanitizeSegment(firstLine), 16)
+			if cleanTitle == "" {
+				cleanTitle = "task"
+			}
+			fileName := fmt.Sprintf("%02d_%s_%s.png", idx+1, tsPrefix, cleanTitle)
+			fullPath := filepath.Join(targetDir, fileName)
+			if err := os.WriteFile(fullPath, pngBytes, 0o644); err != nil {
+				return nil, err
+			}
+			savedFiles = append(savedFiles, filepath.ToSlash(filepath.Join(dateFolder, libFolder, fileName)))
+			totalSaved++
 		}
-		fileName := fmt.Sprintf("%02d_%s_%s.png", i+1, tsPrefix, cleanTitle)
-		fullPath := filepath.Join(targetDir, fileName)
-		if err := os.WriteFile(fullPath, pngBytes, 0o644); err != nil {
-			return nil, err
-		}
-		savedFiles = append(savedFiles, filepath.ToSlash(filepath.Join(folderName, fileName)))
+		partSummaries = append(partSummaries, fmt.Sprintf("%s %d张(剩%d)", libFolder, len(job.tasks), job.rem))
 	}
 
 	now := time.Now()
-	summary := fmt.Sprintf("[%s] 生成 %d 张 -> %s/（第 %d 轮，剩余 %d）", trigger, len(savedFiles), folderName, round, rem)
+	summary := fmt.Sprintf("[%s] %s/ -> %s", trigger, dateFolder, strings.Join(partSummaries, "、"))
 
 	s.mu.Lock()
 	if trigger == "定时" {
@@ -653,10 +793,8 @@ func (s *Store) runBatch(count int, dateStr, suffix string, trigger string) (map
 	debug.FreeOSMemory()
 	return map[string]any{
 		"ok":        true,
-		"folder":    folderName,
-		"generated": len(savedFiles),
-		"remaining": rem,
-		"round":     round,
+		"folder":    dateFolder,
+		"generated": totalSaved,
 		"files":     savedFiles,
 		"summary":   summary,
 	}, nil
@@ -675,7 +813,6 @@ func (s *Store) startScheduler() {
 			enabled := s.state.Schedule.Enabled
 			targetTime := strings.TrimSpace(s.state.Schedule.Time)
 			lastRunDate := s.state.Schedule.LastRunDate
-			count := s.state.Schedule.Count
 			suffix := s.state.Schedule.Suffix
 			s.mu.Unlock()
 
@@ -683,7 +820,7 @@ func (s *Store) startScheduler() {
 				continue
 			}
 			if hhmm == targetTime {
-				if _, err := s.runBatch(count, today, suffix, "定时"); err != nil {
+				if _, err := s.runBatch(0, today, suffix, "", "定时"); err != nil {
 					log.Printf("scheduled batch failed: %v", err)
 				}
 			}
@@ -695,6 +832,35 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(v)
+}
+
+func updateLibraryTasks(lib *TaskLibrary, incoming []string) {
+	newTasks := cleanTaskList(incoming)
+	oldSet := make(map[string]struct{}, len(lib.Tasks))
+	for _, t := range lib.Tasks {
+		oldSet[t] = struct{}{}
+	}
+	newSet := make(map[string]struct{}, len(newTasks))
+	for _, t := range newTasks {
+		newSet[t] = struct{}{}
+	}
+	keptRem := make([]string, 0, len(newTasks))
+	for _, t := range lib.Remaining {
+		if _, exists := newSet[t]; exists {
+			keptRem = append(keptRem, t)
+		}
+	}
+	added := make([]string, 0)
+	for _, t := range newTasks {
+		if _, existed := oldSet[t]; !existed {
+			added = append(added, t)
+		}
+	}
+	if len(added) > 0 {
+		keptRem = shuffleStrings(append(keptRem, added...))
+	}
+	lib.Tasks = newTasks
+	lib.Remaining = keptRem
 }
 
 func main() {
@@ -765,44 +931,86 @@ func main() {
 
 		case http.MethodPost:
 			var req struct {
-				Tasks    *[]string       `json:"tasks"`
-				NoRepeat *bool           `json:"noRepeat"`
-				Card     *CardConfig     `json:"card"`
-				Schedule *ScheduleConfig `json:"schedule"`
+				ActiveLibraryID *string `json:"activeLibraryId"`
+				NoRepeat        *bool   `json:"noRepeat"`
+				Card            *CardConfig     `json:"card"`
+				Schedule        *ScheduleConfig `json:"schedule"`
+				UpdateLibrary   *struct {
+					ID      string    `json:"id"`
+					Name    *string   `json:"name"`
+					Tasks   *[]string `json:"tasks"`
+					Enabled *bool     `json:"enabled"`
+					Count   *int      `json:"count"`
+				} `json:"updateLibrary"`
+				AddLibrary *struct {
+					Name string `json:"name"`
+				} `json:"addLibrary"`
+				DeleteLibraryID *string `json:"deleteLibraryId"`
 			}
 			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 				writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "invalid json"})
 				return
 			}
+
 			store.mu.Lock()
-			if req.Tasks != nil {
-				newTasks := cleanTaskList(*req.Tasks)
-				oldTaskSet := make(map[string]struct{}, len(store.state.Tasks))
-				for _, t := range store.state.Tasks {
-					oldTaskSet[t] = struct{}{}
+			if req.AddLibrary != nil {
+				name := strings.TrimSpace(req.AddLibrary.Name)
+				if name == "" {
+					name = fmt.Sprintf("%d号库", len(store.state.Libraries)+1)
 				}
-				newTaskSet := make(map[string]struct{}, len(newTasks))
-				for _, t := range newTasks {
-					newTaskSet[t] = struct{}{}
-				}
-				// Preserve un-drawn tasks in remaining, drop deleted ones, append brand new ones
-				keptRem := make([]string, 0, len(newTasks))
-				for _, t := range store.state.Remaining {
-					if _, exists := newTaskSet[t]; exists {
-						keptRem = append(keptRem, t)
+				id := fmt.Sprintf("lib-%d", time.Now().UnixNano())
+				store.state.Libraries = append(store.state.Libraries, TaskLibrary{
+					ID:        id,
+					Name:      name,
+					Tasks:     []string{},
+					Remaining: []string{},
+					Round:     1,
+					Enabled:   true,
+					Count:     0,
+				})
+				store.state.ActiveLibraryID = id
+			}
+			if req.DeleteLibraryID != nil && len(store.state.Libraries) > 1 {
+				delID := *req.DeleteLibraryID
+				filtered := make([]TaskLibrary, 0, len(store.state.Libraries))
+				for _, l := range store.state.Libraries {
+					if l.ID != delID {
+						filtered = append(filtered, l)
 					}
 				}
-				added := make([]string, 0)
-				for _, t := range newTasks {
-					if _, existed := oldTaskSet[t]; !existed {
-						added = append(added, t)
+				if len(filtered) > 0 {
+					store.state.Libraries = filtered
+					if store.state.ActiveLibraryID == delID {
+						store.state.ActiveLibraryID = filtered[0].ID
 					}
 				}
-				if len(added) > 0 {
-					keptRem = shuffleStrings(append(keptRem, added...))
+			}
+			if req.UpdateLibrary != nil {
+				if lib := store.findLibraryLocked(req.UpdateLibrary.ID); lib != nil {
+					if req.UpdateLibrary.Name != nil {
+						if nm := strings.TrimSpace(*req.UpdateLibrary.Name); nm != "" {
+							lib.Name = nm
+						}
+					}
+					if req.UpdateLibrary.Tasks != nil {
+						updateLibraryTasks(lib, *req.UpdateLibrary.Tasks)
+					}
+					if req.UpdateLibrary.Enabled != nil {
+						lib.Enabled = *req.UpdateLibrary.Enabled
+					}
+					if req.UpdateLibrary.Count != nil {
+						c := *req.UpdateLibrary.Count
+						if c < 0 {
+							c = 0
+						}
+						lib.Count = c
+					}
 				}
-				store.state.Tasks = newTasks
-				store.state.Remaining = keptRem
+			}
+			if req.ActiveLibraryID != nil {
+				if lib := store.findLibraryLocked(*req.ActiveLibraryID); lib != nil {
+					store.state.ActiveLibraryID = lib.ID
+				}
 			}
 			if req.NoRepeat != nil {
 				store.state.NoRepeat = *req.NoRepeat
@@ -811,7 +1019,6 @@ func main() {
 				store.state.Card = *req.Card
 			}
 			if req.Schedule != nil {
-				// Preserve server-tracked LastRun fields
 				lastDate := store.state.Schedule.LastRunDate
 				lastTime := store.state.Schedule.LastRunTime
 				lastSum := store.state.Schedule.LastRunSummary
@@ -841,13 +1048,24 @@ func main() {
 			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"ok": false, "error": "method not allowed"})
 			return
 		}
+		var req struct {
+			LibraryID string `json:"libraryId"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+
 		store.mu.Lock()
-		task, ok := store.drawOneLocked()
+		libID := req.LibraryID
+		if libID == "" {
+			libID = store.state.ActiveLibraryID
+		}
+		lib := store.findLibraryLocked(libID)
+		task, ok := store.drawOneFromLibLocked(lib)
 		_ = store.saveLocked()
 		st := store.state
 		store.mu.Unlock()
+
 		if !ok {
-			writeJSON(w, http.StatusOK, map[string]any{"ok": false, "error": "没有可抽取的任务", "state": st})
+			writeJSON(w, http.StatusOK, map[string]any{"ok": false, "error": "当前任务库没有可抽取的任务", "state": st})
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "task": task, "state": st})
@@ -858,9 +1076,20 @@ func main() {
 			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"ok": false, "error": "method not allowed"})
 			return
 		}
+		var req struct {
+			LibraryID string `json:"libraryId"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+
 		store.mu.Lock()
-		store.state.Remaining = shuffleStrings(store.state.Tasks)
-		store.state.Round = 1
+		libID := req.LibraryID
+		if libID == "" {
+			libID = store.state.ActiveLibraryID
+		}
+		if lib := store.findLibraryLocked(libID); lib != nil {
+			lib.Remaining = shuffleStrings(lib.Tasks)
+			lib.Round = 1
+		}
 		_ = store.saveLocked()
 		st := store.state
 		store.mu.Unlock()
@@ -873,12 +1102,13 @@ func main() {
 			return
 		}
 		var req struct {
-			Count  int    `json:"count"`
-			Date   string `json:"date"`
-			Suffix string `json:"suffix"`
+			Count     int    `json:"count"`
+			Date      string `json:"date"`
+			Suffix    string `json:"suffix"`
+			LibraryID string `json:"libraryId"` // empty = all enabled libraries
 		}
 		_ = json.NewDecoder(r.Body).Decode(&req)
-		res, err := store.runBatch(req.Count, req.Date, req.Suffix, "手动批量")
+		res, err := store.runBatch(req.Count, req.Date, req.Suffix, req.LibraryID, "手动批量")
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]any{"ok": false, "error": err.Error()})
 			return
@@ -899,6 +1129,7 @@ func main() {
 			ImageBase64 string `json:"imageBase64"`
 			Date        string `json:"date"`
 			Suffix      string `json:"suffix"`
+			LibraryName string `json:"libraryName"`
 			FileName    string `json:"fileName"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -915,15 +1146,9 @@ func main() {
 			return
 		}
 
-		dateStr := sanitizeSegment(req.Date)
-		if dateStr == "" {
-			dateStr = time.Now().Format("2006-01-02")
-		}
-		suffix := sanitizeSegment(req.Suffix)
-		folderName := dateStr
-		if suffix != "" {
-			folderName = dateStr + "_" + suffix
-		}
+		dateFolder := formatDateFolder(req.Date, req.Suffix)
+		libFolder := sanitizeSegment(req.LibraryName)
+
 		fileName := sanitizeSegment(req.FileName)
 		if fileName == "" {
 			fileName = time.Now().Format("150405") + ".png"
@@ -932,7 +1157,15 @@ func main() {
 			fileName += ".png"
 		}
 
-		targetDir := filepath.Join(absOutput, folderName)
+		var targetDir string
+		var relPath string
+		if libFolder != "" {
+			targetDir = filepath.Join(absOutput, dateFolder, libFolder)
+			relPath = filepath.ToSlash(filepath.Join(dateFolder, libFolder, fileName))
+		} else {
+			targetDir = filepath.Join(absOutput, dateFolder)
+			relPath = filepath.ToSlash(filepath.Join(dateFolder, fileName))
+		}
 		if !strings.HasPrefix(targetDir, absOutput) {
 			writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "invalid folder path"})
 			return
@@ -948,7 +1181,7 @@ func main() {
 		}
 		writeJSON(w, http.StatusOK, map[string]any{
 			"ok":   true,
-			"path": filepath.ToSlash(filepath.Join(folderName, fileName)),
+			"path": relPath,
 		})
 	})
 

@@ -21,12 +21,37 @@
       max-width: 480px;
       background: #fff;
       border-radius: 20px;
-      padding: 36px 28px 24px;
+      padding: 26px 28px 24px;
       box-shadow: 0 8px 30px rgba(0, 0, 0, 0.06);
       text-align: center;
     }
+    .top-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 14px;
+      gap: 8px;
+    }
+    .lib-switcher {
+      width: auto;
+      max-width: 220px;
+      padding: 5px 10px;
+      font-size: 13px;
+      font-weight: 500;
+      border-radius: 8px;
+      border: 1px solid #e5e6eb;
+      background: #f8f9fb;
+      color: #1f2329;
+      cursor: pointer;
+    }
+    .brand {
+      font-size: 12.5px;
+      color: #8f959e;
+      font-weight: 500;
+      letter-spacing: 0.4px;
+    }
     .result-box {
-      min-height: 120px;
+      min-height: 130px;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -34,9 +59,9 @@
       margin-bottom: 22px;
       background: #f8f9fb;
       border-radius: 14px;
-      font-size: 24px;
+      font-size: 22px;
       font-weight: 600;
-      line-height: 1.5;
+      line-height: 1.55;
       color: #1f2329;
       word-break: break-word;
       white-space: pre-wrap;
@@ -201,7 +226,7 @@
       box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
     }
     .small-btn {
-      padding: 7px 12px;
+      padding: 7px 10px;
       border-radius: 8px;
       border: 1px solid #dee0e3;
       background: #fff;
@@ -218,6 +243,11 @@
       border-color: #1f2329;
     }
     .small-btn-dark:hover { background: #333942; }
+    .small-btn-danger {
+      color: #dc2626;
+      border-color: #fecaca;
+    }
+    .small-btn-danger:hover { background: #fef2f2; }
     .hint {
       font-size: 12px;
       color: #8f959e;
@@ -231,6 +261,7 @@
       font-size: 12.5px;
       color: #4e5969;
       line-height: 1.6;
+      white-space: pre-line;
     }
     input[type="range"] { width: 100%; accent-color: #1f2329; }
     input[type="color"] {
@@ -247,6 +278,11 @@
 </head>
 <body>
   <div class="container">
+    <div class="top-bar">
+      <select id="libSelect" class="lib-switcher" title="切换任务库"></select>
+      <span class="brand">TaskCard</span>
+    </div>
+
     <div id="result" class="result-box placeholder">点击下方按钮抽取一个任务</div>
 
     <div class="actions">
@@ -259,22 +295,22 @@
     <div class="footer">
       <div>
         <span id="statusText">共 0 个任务</span>
-        <button id="resetBtn" class="link-btn" style="display:none;">重置</button>
+        <button id="resetBtn" class="link-btn" style="display:none;">重置本库</button>
       </div>
       <div class="footer-right">
         <button id="toggleScheduleBtn" class="link-btn">定时任务</button>
         <button id="toggleCardBtn" class="link-btn">配图设置</button>
-        <button id="toggleEditorBtn" class="link-btn">编辑任务</button>
+        <button id="toggleEditorBtn" class="link-btn">任务库</button>
       </div>
     </div>
 
-    <!-- 定时任务面板（默认收起，NAS/Docker 模式下生效） -->
+    <!-- 定时任务面板 -->
     <div id="schedulePanel" class="panel">
       <div class="field">
         <div class="field-label">
           <label class="checkbox-label">
             <input type="checkbox" id="schedEnabled" />
-            开启每日定时自动生成配图
+            开启每日定时按库自动生成
           </label>
           <span id="schedModeTag" style="font-size:12px;"></span>
         </div>
@@ -287,28 +323,30 @@
             <input type="time" id="schedTime" value="00:00" />
           </div>
           <div>
-            <div class="field-label"><span>每次生成张数</span></div>
+            <div class="field-label"><span>每库默认张数</span></div>
             <input type="number" id="schedCount" value="20" min="1" max="500" />
           </div>
         </div>
       </div>
 
       <div class="field">
-        <div class="field-label"><span>定时生成的目录后缀</span></div>
-        <input type="text" id="schedSuffix" value="" placeholder="留空则直接用日期，如 2026-11-26" />
+        <div class="field-label">
+          <span>日期目录后缀（留空则直接 20261126/库名/）</span>
+        </div>
+        <input type="text" id="schedSuffix" value="" placeholder="留空即可，自动建 20261126/1号库/ ..." />
       </div>
 
       <div class="field">
         <label class="checkbox-label">
           <input type="checkbox" id="autoResetOnEmpty" checked />
-          所有任务全部抽完后，自动开启新一轮（本轮结束前绝不重复）
+          单库任务全部抽完后自动开启新一轮（本轮结束前绝不重复）
         </label>
       </div>
 
       <div class="field">
         <div class="row">
           <button type="button" id="saveSchedBtn" class="small-btn small-btn-dark" style="flex:1 !important;">保存定时设置</button>
-          <button type="button" id="runBatchNowBtn" class="small-btn" style="flex:1 !important;">立即批量生成</button>
+          <button type="button" id="runBatchNowBtn" class="small-btn" style="flex:1 !important;">立即按库批量生成</button>
         </div>
       </div>
 
@@ -317,15 +355,15 @@
       </div>
     </div>
 
-    <!-- 配图设置面板（默认收起） -->
+    <!-- 配图设置面板 -->
     <div id="cardPanel" class="panel">
       <div class="preview-wrap">
         <canvas id="previewCanvas"></canvas>
       </div>
 
       <div class="field">
-        <div class="field-label"><span>配图文字（抽任务自动同步，也可手改）</span></div>
-        <textarea id="cardText" rows="2" placeholder="输入要印在图片上的字..."></textarea>
+        <div class="field-label"><span>配图文字（支持多行，抽任务自动同步）</span></div>
+        <textarea id="cardText" rows="3" placeholder="输入要印在图片上的字..."></textarea>
       </div>
 
       <div class="field">
@@ -390,46 +428,67 @@
 
       <div class="field">
         <div class="field-label">
-          <span>保存目录与文件夹后缀</span>
+          <span>保存目录后缀</span>
           <span id="folderPreview" style="color:#1f2329; font-weight:500;"></span>
         </div>
         <div class="row">
-          <input type="text" id="folderSuffix" placeholder="留空则只用日期目录" value="" />
+          <input type="text" id="folderSuffix" placeholder="留空则直接 20261126/库名/" value="" />
           <button type="button" id="pickDirBtn" class="small-btn">选择文件夹</button>
         </div>
         <div id="saveModeHint" class="hint"></div>
       </div>
     </div>
 
-    <!-- 编辑任务面板（默认收起） -->
+    <!-- 任务库管理与编辑面板 -->
     <div id="editorPanel" class="panel">
       <div class="field">
         <div class="field-label">
-          <span>每行一个任务（自动去重并保存）</span>
+          <span>管理任务库（每个库独立子文件夹 & 独立防重复）</span>
+        </div>
+        <div class="row">
+          <input type="text" id="libNameInput" placeholder="当前库名称，如 1号库" />
+          <button type="button" id="addLibBtn" class="small-btn">+ 新建库</button>
+          <button type="button" id="delLibBtn" class="small-btn small-btn-danger">删除</button>
+        </div>
+      </div>
+
+      <div class="field">
+        <div class="row">
+          <label class="checkbox-label" style="flex:1.2;">
+            <input type="checkbox" id="libEnabled" checked />
+            参与定时生成
+          </label>
+          <input type="number" id="libCount" min="0" max="500" placeholder="本库张数(0=用默认)" title="填 0 或留空表示沿用定时任务的默认张数" />
+        </div>
+      </div>
+
+      <div class="field">
+        <div class="field-label">
+          <span>任务内容（多行任务用单独一行 --- 隔开）</span>
           <label class="checkbox-label">
             <input type="checkbox" id="noRepeat" checked />
             本轮不重复
           </label>
         </div>
-        <textarea id="taskInput" rows="8" placeholder="输入任务，每行一条..."></textarea>
+        <textarea id="taskInput" rows="9" placeholder="任务一第一行&#10;任务一第二行&#10;---&#10;任务二"></textarea>
         <div class="row" style="margin-top:8px;">
           <input type="file" id="importTxtInput" accept=".txt,.md,.csv,text/plain" style="display:none;" />
           <button type="button" id="importTxtBtn" class="small-btn">导入 TXT</button>
           <button type="button" id="exportTxtBtn" class="small-btn">导出 TXT</button>
         </div>
-        <div class="hint">每行 1 条任务（不要序号/空行）；修改或导入时，已抽过的任务不会重复进入本轮剩余池。</div>
+        <div class="hint">若文本中包含单独一行 ---，则按 --- 拆分多行任务；否则按每行 1 条拆分。</div>
       </div>
     </div>
   </div>
 
   <script>
-    const STORAGE_KEY = 'minimal_task_picker_v3';
+    const STORAGE_KEY = 'taskcard_state_v4';
     const DEFAULT_TASKS = [
-      '整理今天的待办清单',
-      '阅读 20 分钟',
-      '站起来活动拉伸 5 分钟',
-      '喝一杯温水',
-      '清理桌面和下载文件夹'
+      '今日自律打卡\n早起喝一杯温水\n记录当下感受',
+      '整理手机相册\n删掉 20 张不需要的照片',
+      '读完一本书的任意一个章节\n写 1 句话总结',
+      '晚饭后出门散步 20 分钟\n全程不看手机',
+      '清理电脑桌面和下载文件夹'
     ];
 
     const THEMES = [
@@ -441,6 +500,7 @@
       { name: '暗夜黑', bg: '#16181d', card: '#20232a', text: '#f3f4f6', accent: '#9ca3af' }
     ];
 
+    const libSelect = document.getElementById('libSelect');
     const resultEl = document.getElementById('result');
     const drawBtn = document.getElementById('drawBtn');
     const saveImgBtn = document.getElementById('saveImgBtn');
@@ -453,6 +513,13 @@
     const schedulePanel = document.getElementById('schedulePanel');
     const cardPanel = document.getElementById('cardPanel');
     const editorPanel = document.getElementById('editorPanel');
+
+    // Library controls
+    const libNameInput = document.getElementById('libNameInput');
+    const addLibBtn = document.getElementById('addLibBtn');
+    const delLibBtn = document.getElementById('delLibBtn');
+    const libEnabledEl = document.getElementById('libEnabled');
+    const libCountEl = document.getElementById('libCount');
     const taskInput = document.getElementById('taskInput');
     const importTxtInput = document.getElementById('importTxtInput');
     const importTxtBtn = document.getElementById('importTxtBtn');
@@ -506,11 +573,43 @@
       return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     }
 
+    function parseTasksText(raw) {
+      const text = String(raw || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+      const hasDivider = /^\s*---\s*$/m.test(text);
+      const chunks = hasDivider ? text.split(/^\s*---\s*$/m) : text.split('\n');
+      const seen = new Set();
+      const out = [];
+      for (let item of chunks) {
+        item = item.trim();
+        if (!item) continue;
+        if (!seen.has(item)) {
+          seen.add(item);
+          out.push(item);
+        }
+      }
+      return out;
+    }
+
+    function serializeTasksText(tasks) {
+      if (!Array.isArray(tasks) || tasks.length === 0) return '';
+      const hasMultiline = tasks.some(t => t.includes('\n'));
+      return hasMultiline ? tasks.join('\n---\n') : tasks.join('\n');
+    }
+
     function defaultLocalState() {
       return {
-        tasks: [...DEFAULT_TASKS],
-        remaining: [...DEFAULT_TASKS],
-        round: 1,
+        libraries: [
+          {
+            id: 'lib-1',
+            name: '1号库',
+            tasks: [...DEFAULT_TASKS],
+            remaining: [...DEFAULT_TASKS],
+            round: 1,
+            enabled: true,
+            count: 0
+          }
+        ],
+        activeLibraryId: 'lib-1',
         noRepeat: true,
         currentTask: '',
         card: {
@@ -549,28 +648,31 @@
         const raw = localStorage.getItem(STORAGE_KEY);
         if (raw) {
           const parsed = JSON.parse(raw);
-          return {
-            ...def,
-            ...parsed,
-            tasks: Array.isArray(parsed.tasks) ? parsed.tasks : def.tasks,
-            remaining: Array.isArray(parsed.remaining) ? parsed.remaining : def.remaining,
-            card: { ...def.card, ...(parsed.card || {}) },
-            schedule: { ...def.schedule, ...(parsed.schedule || {}) }
-          };
+          if (Array.isArray(parsed.libraries) && parsed.libraries.length > 0) {
+            return {
+              ...def,
+              ...parsed,
+              card: { ...def.card, ...(parsed.card || {}) },
+              schedule: { ...def.schedule, ...(parsed.schedule || {}) }
+            };
+          }
         }
       } catch (_) {}
       return def;
+    }
+
+    function getActiveLib() {
+      return state.libraries.find(l => l.id === state.activeLibraryId) || state.libraries[0];
     }
 
     function persistLocal() {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     }
 
-    function scheduleSyncToServer(payload) {
+    function scheduleSyncToServer(payload, immediate = false) {
       persistLocal();
-      if (!serverMode) return;
-      clearTimeout(syncTimer);
-      syncTimer = setTimeout(async () => {
+      if (!serverMode) return Promise.resolve();
+      const send = async () => {
         try {
           const res = await fetch('/api/state', {
             method: 'POST',
@@ -580,11 +682,17 @@
           const data = await res.json();
           if (data && data.ok && data.state) {
             state = data.state;
+            renderLibSelect();
             updateStatus();
+            updateFolderPreview();
             updateScheduleUI();
           }
         } catch (_) {}
-      }, 250);
+      };
+      clearTimeout(syncTimer);
+      if (immediate) return send();
+      syncTimer = setTimeout(send, 260);
+      return Promise.resolve();
     }
 
     function showToast(msg, isError = false) {
@@ -598,17 +706,40 @@
       return buf[0] % max;
     }
 
+    function renderLibSelect() {
+      const active = getActiveLib();
+      libSelect.innerHTML = '';
+      state.libraries.forEach(lib => {
+        const opt = document.createElement('option');
+        opt.value = lib.id;
+        opt.textContent = `${lib.name} (${lib.tasks.length})`;
+        if (active && lib.id === active.id) opt.selected = true;
+        libSelect.appendChild(opt);
+      });
+      delLibBtn.disabled = state.libraries.length <= 1;
+    }
+
+    function loadActiveLibIntoEditor() {
+      const lib = getActiveLib();
+      if (!lib) return;
+      libNameInput.value = lib.name;
+      libEnabledEl.checked = lib.enabled !== false;
+      libCountEl.value = lib.count > 0 ? lib.count : '';
+      taskInput.value = serializeTasksText(lib.tasks);
+    }
+
     function updateStatus() {
-      const total = state.tasks.length;
-      if (total === 0) {
-        statusText.textContent = '暂无任务';
+      const lib = getActiveLib();
+      if (!lib || lib.tasks.length === 0) {
+        statusText.textContent = `${lib ? lib.name : '当前库'} · 暂无任务`;
         resetBtn.style.display = 'none';
         return;
       }
+      const total = lib.tasks.length;
       if (state.noRepeat) {
-        const rem = state.remaining.length;
-        statusText.textContent = `第 ${state.round || 1} 轮 · 剩余 ${rem}/${total}`;
-        resetBtn.style.display = rem < total || (state.round || 1) > 1 ? 'inline-block' : 'none';
+        const rem = (lib.remaining || []).length;
+        statusText.textContent = `第 ${lib.round || 1} 轮 · 剩余 ${rem}/${total}`;
+        resetBtn.style.display = rem < total || (lib.round || 1) > 1 ? 'inline-block' : 'none';
       } else {
         statusText.textContent = `共 ${total} 个任务`;
         resetBtn.style.display = 'none';
@@ -625,20 +756,28 @@
     }
 
     async function drawTask() {
+      const lib = getActiveLib();
+      if (!lib) return;
+
       if (serverMode) {
         drawBtn.disabled = true;
         try {
-          const res = await fetch('/api/draw', { method: 'POST' });
+          const res = await fetch('/api/draw', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ libraryId: lib.id })
+          });
           const data = await res.json();
           if (data.state) state = data.state;
           if (!data.ok) {
-            showToast(data.error || '没有可抽取的任务', true);
+            showToast(data.error || '当前任务库没有可抽取的任务', true);
             updateStatus();
             return;
           }
           showResult(data.task, false);
           cardTextEl.value = data.task;
           showToast('');
+          renderLibSelect();
           updateStatus();
           renderCanvas(previewCanvas, true);
         } catch (err) {
@@ -649,21 +788,21 @@
         return;
       }
 
-      if (state.tasks.length === 0) {
+      if (lib.tasks.length === 0) {
         openPanel('editor');
-        showResult('请先在下方输入任务', true);
+        showResult('请先在当前任务库输入任务', true);
         return;
       }
       let task = '';
       if (!state.noRepeat) {
-        task = state.tasks[secureRandomInt(state.tasks.length)];
+        task = lib.tasks[secureRandomInt(lib.tasks.length)];
       } else {
-        if (state.remaining.length === 0) {
-          state.remaining = [...state.tasks];
-          state.round = (state.round || 1) + 1;
+        if (!lib.remaining || lib.remaining.length === 0) {
+          lib.remaining = [...lib.tasks];
+          lib.round = (lib.round || 1) + 1;
         }
-        const idx = secureRandomInt(state.remaining.length);
-        task = state.remaining.splice(idx, 1)[0];
+        const idx = secureRandomInt(lib.remaining.length);
+        task = lib.remaining.splice(idx, 1)[0];
       }
       state.currentTask = task;
       persistLocal();
@@ -685,6 +824,7 @@
         panel.classList.toggle('open', shouldOpen);
         btn.classList.toggle('active', shouldOpen);
         if (shouldOpen && key === 'card') renderCanvas(previewCanvas, true);
+        if (shouldOpen && key === 'editor') loadActiveLibIntoEditor();
       }
     }
 
@@ -698,26 +838,33 @@
       return { w, h };
     }
 
-    function getFolderName() {
-      const dateStr = dateValueEl.value || getTodayStr();
+    function getDateFolderName() {
+      const rawDate = (dateValueEl.value || getTodayStr()).replace(/-/g, '');
       const suffix = (state.card.suffix || '').trim().replace(/[\\/:*?"<>|]/g, '');
-      return suffix ? `${dateStr}_${suffix}` : dateStr;
+      return suffix ? `${rawDate}_${suffix}` : rawDate;
+    }
+
+    function getCleanLibFolder() {
+      const lib = getActiveLib();
+      return ((lib && lib.name) || '1号库').trim().replace(/[\\/:*?"<>|]/g, '') || '1号库';
     }
 
     function updateFolderPreview() {
-      folderPreviewEl.textContent = `子文件夹：${getFolderName()}/`;
+      const dateFolder = getDateFolderName();
+      const libFolder = getCleanLibFolder();
+      folderPreviewEl.textContent = `${dateFolder}/${libFolder}/`;
       if (serverMode) {
         pickDirBtn.style.display = 'none';
-        saveModeHint.textContent = `NAS/Docker 模式：将直接保存到 ${serverOutputDir || '/output'}/${getFolderName()}/` +
-          (serverFontLoaded ? `（服务端字体：${serverFontLoaded}）` : '（提示：放一个 .ttf/.ttc 中文字体到 /fonts 目录可自定义定时生成字体）');
+        saveModeHint.textContent = `NAS/Docker 模式：直接保存到 ${serverOutputDir || '/output'}/${dateFolder}/${libFolder}/` +
+          (serverFontLoaded ? `（字体：${serverFontLoaded}）` : '');
       } else if (window.showDirectoryPicker) {
         pickDirBtn.style.display = 'inline-block';
         saveModeHint.textContent = selectedDirHandle
-          ? `已选本地目录：「${selectedDirHandle.name}」，点击「生成配图」直接存入子文件夹`
-          : '首次点击「生成配图」或右侧按钮选择一次本地文件夹即可自动建子文件夹保存';
+          ? `已选本地目录：「${selectedDirHandle.name}」，将存入 ${dateFolder}/${libFolder}/`
+          : '首次点击「生成配图」或右侧按钮选择本地文件夹即可自动建子目录保存';
       } else {
         pickDirBtn.style.display = 'none';
-        saveModeHint.textContent = '本地离线模式：点击「生成配图」将自动下载 PNG 图片（部署到 NAS Docker 后可直接写目录和定时生成）';
+        saveModeHint.textContent = '离线模式：点击「生成配图」自动下载 PNG（部署到 NAS Docker 后自动按库建目录并支持定时生成）';
       }
     }
 
@@ -728,26 +875,30 @@
       schedSuffixEl.value = state.schedule.suffix || '';
       autoResetOnEmptyEl.checked = state.schedule.autoResetOnEmpty !== false;
 
+      const enabledLibs = state.libraries.filter(l => l.enabled !== false && l.tasks.length > 0);
+      const libDesc = enabledLibs.length > 0
+        ? enabledLibs.map(l => `${l.name}(${l.count > 0 ? l.count : (state.schedule.count || 20)}张)`).join('、')
+        : '暂无已启用的非空任务库';
+
       if (serverMode) {
         schedModeTag.textContent = state.schedule.enabled ? '● 运行中' : '○ 未开启';
         schedModeTag.style.color = state.schedule.enabled ? '#0f766e' : '#8f959e';
         saveSchedBtn.disabled = false;
         runBatchNowBtn.disabled = false;
-        const lines = [];
-        lines.push(`下次计划：${state.schedule.enabled ? `每天 ${state.schedule.time} 自动生成 ${state.schedule.count} 张` : '未开启'}`);
-        if (state.schedule.lastRunSummary) {
-          lines.push(`最近执行（${state.schedule.lastRunTime || ''}）：${state.schedule.lastRunSummary}`);
-        } else {
-          lines.push('最近执行：暂无记录');
-        }
+        const lines = [
+          `定时计划：${state.schedule.enabled ? `每天 ${state.schedule.time}` : '未开启'}`,
+          `参与库：${libDesc}`,
+          state.schedule.lastRunSummary
+            ? `最近执行（${state.schedule.lastRunTime || ''}）：${state.schedule.lastRunSummary}`
+            : '最近执行：暂无记录'
+        ];
         schedStatusBox.textContent = lines.join('\n');
-        schedStatusBox.style.whiteSpace = 'pre-line';
       } else {
         schedModeTag.textContent = '需 Docker / NAS 运行';
         schedModeTag.style.color = '#d97706';
         saveSchedBtn.disabled = true;
         runBatchNowBtn.disabled = true;
-        schedStatusBox.textContent = '当前是直接双击打开的静态网页，无法在后台凌晨自动执行。使用 docker compose 部署到 NAS 后，定时任务和「立即批量生成」会自动启用。';
+        schedStatusBox.textContent = `当前为离线静态页；部署到 NAS Docker 后，将按「日期/任务库/」自动批量生成。\n当前参与库：${libDesc}`;
       }
     }
 
@@ -855,7 +1006,8 @@
     function buildFileName(text) {
       const now = new Date();
       const ts = `${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}${String(now.getSeconds()).padStart(2, '0')}`;
-      const clean = (text || 'task').replace(/[\r\n]+/g, ' ').replace(/[\\/:*?"<>|]/g, '').trim().slice(0, 16) || 'task';
+      const firstLine = (text || 'task').split(/\r?\n/)[0];
+      const clean = firstLine.replace(/[\\/:*?"<>|]/g, '').trim().slice(0, 16) || 'task';
       return `${ts}_${clean}.png`;
     }
 
@@ -867,7 +1019,8 @@
       }
       const exportCanvas = document.createElement('canvas');
       renderCanvas(exportCanvas, false);
-      const folderName = getFolderName();
+      const dateFolder = getDateFolderName();
+      const libFolder = getCleanLibFolder();
       const fileName = buildFileName(text);
 
       if (serverMode) {
@@ -880,6 +1033,7 @@
               imageBase64: exportCanvas.toDataURL('image/png'),
               date: dateValueEl.value || getTodayStr(),
               suffix: (state.card.suffix || '').trim(),
+              libraryName: libFolder,
               fileName
             })
           });
@@ -900,13 +1054,14 @@
             selectedDirHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
             updateFolderPreview();
           }
-          const subDir = await selectedDirHandle.getDirectoryHandle(folderName, { create: true });
-          const fileHandle = await subDir.getFileHandle(fileName, { create: true });
+          const dDir = await selectedDirHandle.getDirectoryHandle(dateFolder, { create: true });
+          const lDir = await dDir.getDirectoryHandle(libFolder, { create: true });
+          const fileHandle = await lDir.getFileHandle(fileName, { create: true });
           const writable = await fileHandle.createWritable();
           const blob = await new Promise(resolve => exportCanvas.toBlob(resolve, 'image/png'));
           await writable.write(blob);
           await writable.close();
-          showToast(`已保存：${selectedDirHandle.name}/${folderName}/${fileName}`);
+          showToast(`已保存：${selectedDirHandle.name}/${dateFolder}/${libFolder}/${fileName}`);
           return;
         } catch (err) {
           if (err && err.name === 'AbortError') { showToast('已取消选择目录', true); return; }
@@ -914,10 +1069,10 @@
       }
 
       const link = document.createElement('a');
-      link.download = `${folderName}_${fileName}`;
+      link.download = `${dateFolder}_${libFolder}_${fileName}`;
       link.href = exportCanvas.toDataURL('image/png');
       link.click();
-      showToast(`已下载：${folderName}_${fileName}`);
+      showToast(`已下载：${dateFolder}_${libFolder}_${fileName}`);
     }
 
     function initThemes() {
@@ -945,7 +1100,8 @@
     }
 
     function applyStateToUI() {
-      taskInput.value = state.tasks.join('\n');
+      renderLibSelect();
+      loadActiveLibIntoEditor();
       noRepeatEl.checked = state.noRepeat;
       if (state.currentTask) {
         showResult(state.currentTask, false);
@@ -993,48 +1149,103 @@
     }
 
     // Events
-    drawBtn.addEventListener('click', drawTask);
-    saveImgBtn.addEventListener('click', saveImage);
-
-    resetBtn.addEventListener('click', async () => {
-      if (serverMode) {
-        const res = await fetch('/api/reset', { method: 'POST' });
-        const data = await res.json();
-        if (data.state) state = data.state;
-      } else {
-        state.remaining = [...state.tasks];
-        state.round = 1;
-        persistLocal();
-      }
-      showResult('已重置本轮，点击抽取任务', true);
+    libSelect.addEventListener('change', async () => {
+      state.activeLibraryId = libSelect.value;
+      loadActiveLibIntoEditor();
       updateStatus();
+      updateFolderPreview();
+      await scheduleSyncToServer({ activeLibraryId: state.activeLibraryId }, true);
     });
 
-    toggleScheduleBtn.addEventListener('click', () => openPanel('schedule'));
-    toggleCardBtn.addEventListener('click', () => openPanel('card'));
-    toggleEditorBtn.addEventListener('click', () => openPanel('editor'));
+    addLibBtn.addEventListener('click', async () => {
+      const nextNum = state.libraries.length + 1;
+      const name = prompt('请输入新任务库名称：', `${nextNum}号库`);
+      if (name === null) return;
+      const trimmed = name.trim() || `${nextNum}号库`;
+      if (serverMode) {
+        await scheduleSyncToServer({ addLibrary: { name: trimmed } }, true);
+        loadActiveLibIntoEditor();
+        showToast(`已新建任务库：${trimmed}`);
+      } else {
+        const id = `lib-${Date.now()}`;
+        state.libraries.push({ id, name: trimmed, tasks: [], remaining: [], round: 1, enabled: true, count: 0 });
+        state.activeLibraryId = id;
+        persistLocal();
+        applyStateToUI();
+        showToast(`已新建任务库：${trimmed}`);
+      }
+    });
+
+    delLibBtn.addEventListener('click', async () => {
+      if (state.libraries.length <= 1) return;
+      const lib = getActiveLib();
+      if (!confirm(`确定删除任务库「${lib.name}」吗？`)) return;
+      if (serverMode) {
+        await scheduleSyncToServer({ deleteLibraryId: lib.id }, true);
+        loadActiveLibIntoEditor();
+        showToast(`已删除：${lib.name}`);
+      } else {
+        state.libraries = state.libraries.filter(l => l.id !== lib.id);
+        state.activeLibraryId = state.libraries[0].id;
+        persistLocal();
+        applyStateToUI();
+        showToast(`已删除：${lib.name}`);
+      }
+    });
+
+    libNameInput.addEventListener('input', () => {
+      const lib = getActiveLib();
+      if (!lib) return;
+      const nm = libNameInput.value.trim();
+      if (!nm) return;
+      lib.name = nm;
+      renderLibSelect();
+      updateFolderPreview();
+      updateScheduleUI();
+      scheduleSyncToServer({ updateLibrary: { id: lib.id, name: nm } });
+    });
+
+    libEnabledEl.addEventListener('change', () => {
+      const lib = getActiveLib();
+      if (!lib) return;
+      lib.enabled = libEnabledEl.checked;
+      updateScheduleUI();
+      scheduleSyncToServer({ updateLibrary: { id: lib.id, enabled: lib.enabled } });
+    });
+
+    libCountEl.addEventListener('input', () => {
+      const lib = getActiveLib();
+      if (!lib) return;
+      const c = Math.max(0, Number(libCountEl.value) || 0);
+      lib.count = c;
+      updateScheduleUI();
+      scheduleSyncToServer({ updateLibrary: { id: lib.id, count: c } });
+    });
 
     function syncTaskListFromText(rawText) {
-      const list = Array.from(new Set(rawText.split(/\r?\n/).map(s => s.trim()).filter(Boolean)));
+      const lib = getActiveLib();
+      if (!lib) return 0;
+      const list = parseTasksText(rawText);
       if (!serverMode) {
-        const oldSet = new Set(state.tasks);
+        const oldSet = new Set(lib.tasks);
         const newSet = new Set(list);
-        const kept = state.remaining.filter(t => newSet.has(t));
+        const kept = (lib.remaining || []).filter(t => newSet.has(t));
         const added = list.filter(t => !oldSet.has(t));
-        state.tasks = list;
-        state.remaining = kept.concat(added);
+        lib.tasks = list;
+        lib.remaining = kept.concat(added);
         persistLocal();
+        renderLibSelect();
         updateStatus();
+        updateScheduleUI();
       } else {
-        state.tasks = list;
-        scheduleSyncToServer({ tasks: list });
+        lib.tasks = list;
+        renderLibSelect();
+        scheduleSyncToServer({ updateLibrary: { id: lib.id, tasks: list } });
       }
       return list.length;
     }
 
-    taskInput.addEventListener('input', () => {
-      syncTaskListFromText(taskInput.value);
-    });
+    taskInput.addEventListener('input', () => syncTaskListFromText(taskInput.value));
 
     importTxtBtn.addEventListener('click', () => importTxtInput.click());
     importTxtInput.addEventListener('change', (e) => {
@@ -1045,21 +1256,50 @@
         const text = String(reader.result || '');
         taskInput.value = text;
         const count = syncTaskListFromText(text);
-        showToast(`已导入 ${count} 条任务`);
+        showToast(`已导入 ${count} 条任务到「${getActiveLib().name}」`);
         importTxtInput.value = '';
       };
       reader.readAsText(file, 'utf-8');
     });
 
     exportTxtBtn.addEventListener('click', () => {
-      const blob = new Blob([state.tasks.join('\n') + '\n'], { type: 'text/plain;charset=utf-8' });
+      const lib = getActiveLib();
+      const content = serializeTasksText(lib ? lib.tasks : []) + '\n';
+      const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = 'tasks.txt';
+      a.download = `${getCleanLibFolder()}.txt`;
       a.click();
       URL.revokeObjectURL(url);
     });
+
+    drawBtn.addEventListener('click', drawTask);
+    saveImgBtn.addEventListener('click', saveImage);
+
+    resetBtn.addEventListener('click', async () => {
+      const lib = getActiveLib();
+      if (!lib) return;
+      if (serverMode) {
+        const res = await fetch('/api/reset', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ libraryId: lib.id })
+        });
+        const data = await res.json();
+        if (data.state) state = data.state;
+      } else {
+        lib.remaining = [...lib.tasks];
+        lib.round = 1;
+        persistLocal();
+      }
+      showResult(`已重置「${lib.name}」，点击抽取任务`, true);
+      updateStatus();
+    });
+
+    toggleScheduleBtn.addEventListener('click', () => openPanel('schedule'));
+    toggleCardBtn.addEventListener('click', () => openPanel('card'));
+    toggleEditorBtn.addEventListener('click', () => openPanel('editor'));
 
     noRepeatEl.addEventListener('change', () => {
       state.noRepeat = noRepeatEl.checked;
@@ -1092,25 +1332,25 @@
 
     runBatchNowBtn.addEventListener('click', async () => {
       runBatchNowBtn.disabled = true;
-      showToast('正在批量生成配图...');
+      showToast('正在按任务库批量生成配图...');
       try {
         const res = await fetch('/api/batch', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            count: Math.max(1, Number(schedCountEl.value) || 20),
             date: dateValueEl.value || getTodayStr(),
             suffix: (schedSuffixEl.value || '').trim()
           })
         });
         const data = await res.json();
         if (data.state) state = data.state;
+        renderLibSelect();
         updateStatus();
         updateScheduleUI();
         if (!data.ok) {
           showToast(data.error || '批量生成失败', true);
         } else {
-          showToast(`批量完成：已生成 ${data.generated} 张 -> ${data.folder}/`);
+          showToast(data.summary || `批量完成：共生成 ${data.generated} 张`);
         }
       } catch (err) {
         showToast(`批量生成失败：${err.message}`, true);
