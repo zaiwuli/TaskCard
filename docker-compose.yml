@@ -1,0 +1,21 @@
+services:
+  taskcard:
+    build: .
+    container_name: taskcard
+    ports:
+      - "8080:8080"
+    environment:
+      - TZ=Asia/Shanghai
+      - OUTPUT_DIR=/output
+      - DATA_DIR=/data
+      - FONTS_DIR=/fonts
+      # 首次启动的默认定时任务配置（启动后也可在网页「定时任务」面板里随时修改）
+      - SCHEDULE_ENABLED=true
+      - SCHEDULE_TIME=00:00
+      - SCHEDULE_COUNT=20
+      - SCHEDULE_SUFFIX=
+    volumes:
+      - ./output:/output   # 生成的图片目录（按 日期 或 日期_后缀 自动建子目录）
+      - ./data:/data       # 持久化任务池、已抽取记录和配置（重启不丢、不重复）
+      - ./fonts:/fonts     # 可选：放入任意 .ttf/.otf/.ttc 字体文件即自动优先使用
+    restart: unless-stopped

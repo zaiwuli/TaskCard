@@ -1,0 +1,1222 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TaskCard · 随机任务抽取 & 配图生成</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+      background: #f5f6f8;
+      color: #1f2329;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px 16px;
+    }
+    .container {
+      width: 100%;
+      max-width: 480px;
+      background: #fff;
+      border-radius: 20px;
+      padding: 36px 28px 24px;
+      box-shadow: 0 8px 30px rgba(0, 0, 0, 0.06);
+      text-align: center;
+    }
+    .result-box {
+      min-height: 120px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px 18px;
+      margin-bottom: 22px;
+      background: #f8f9fb;
+      border-radius: 14px;
+      font-size: 24px;
+      font-weight: 600;
+      line-height: 1.5;
+      color: #1f2329;
+      word-break: break-word;
+      white-space: pre-wrap;
+      transition: transform 0.14s ease, opacity 0.14s ease;
+    }
+    .result-box.placeholder {
+      font-size: 16px;
+      font-weight: 400;
+      color: #8f959e;
+    }
+    .result-box.pop {
+      transform: scale(0.97);
+      opacity: 0.55;
+    }
+    .actions {
+      display: flex;
+      gap: 10px;
+    }
+    .btn {
+      height: 50px;
+      border-radius: 12px;
+      font-size: 16px;
+      font-weight: 500;
+      cursor: pointer;
+      border: none;
+      transition: background 0.15s ease, transform 0.1s ease, border-color 0.15s ease;
+    }
+    .btn:active { transform: scale(0.985); }
+    .btn-primary {
+      flex: 1.2;
+      background: #1f2329;
+      color: #fff;
+    }
+    .btn-primary:hover { background: #333942; }
+    .btn-save {
+      flex: 1;
+      background: #fff;
+      color: #1f2329;
+      border: 1.5px solid #d0d3d9;
+    }
+    .btn-save:hover {
+      background: #f8f9fb;
+      border-color: #1f2329;
+    }
+    .btn:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+    .toast {
+      min-height: 20px;
+      margin-top: 12px;
+      font-size: 12.5px;
+      color: #0f766e;
+      word-break: break-all;
+    }
+    .toast.error { color: #dc2626; }
+    .footer {
+      margin-top: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 13px;
+      color: #8f959e;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    .footer-right {
+      display: flex;
+      align-items: center;
+      gap: 2px;
+    }
+    .link-btn {
+      background: none;
+      border: none;
+      color: #646a73;
+      font-size: 13px;
+      cursor: pointer;
+      padding: 4px 7px;
+      border-radius: 6px;
+    }
+    .link-btn:hover, .link-btn.active {
+      background: #f2f3f5;
+      color: #1f2329;
+    }
+
+    .panel {
+      display: none;
+      margin-top: 16px;
+      padding-top: 16px;
+      border-top: 1px solid #eff0f1;
+      text-align: left;
+    }
+    .panel.open { display: block; }
+    .field { margin-bottom: 12px; }
+    .field:last-child { margin-bottom: 0; }
+    .field-label {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 12.5px;
+      color: #646a73;
+      margin-bottom: 6px;
+    }
+    textarea, input[type="text"], input[type="number"], input[type="date"], input[type="time"], select {
+      width: 100%;
+      padding: 8px 10px;
+      border: 1px solid #dee0e3;
+      border-radius: 8px;
+      font-size: 13.5px;
+      color: #1f2329;
+      background: #fff;
+      font-family: inherit;
+      outline: none;
+    }
+    textarea:focus, input:focus, select:focus { border-color: #1f2329; }
+    textarea { resize: vertical; line-height: 1.55; }
+    .row {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+    .row > * { flex: 1; }
+    .checkbox-label {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+      color: #4e5969;
+      cursor: pointer;
+      user-select: none;
+    }
+    .swatches {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .swatch {
+      width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      border: 2px solid rgba(0, 0, 0, 0.12);
+      cursor: pointer;
+      transition: transform 0.12s ease, box-shadow 0.12s ease;
+    }
+    .swatch:hover { transform: scale(1.08); }
+    .swatch.active {
+      box-shadow: 0 0 0 2px #fff, 0 0 0 4px #1f2329;
+    }
+    .preview-wrap {
+      display: flex;
+      justify-content: center;
+      background: #f2f3f5;
+      border-radius: 12px;
+      padding: 12px;
+      margin-bottom: 14px;
+    }
+    #previewCanvas {
+      max-width: 100%;
+      max-height: 240px;
+      border-radius: 8px;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+    }
+    .small-btn {
+      padding: 7px 12px;
+      border-radius: 8px;
+      border: 1px solid #dee0e3;
+      background: #fff;
+      color: #1f2329;
+      font-size: 12.5px;
+      cursor: pointer;
+      white-space: nowrap;
+      flex: 0 0 auto !important;
+    }
+    .small-btn:hover { background: #f5f6f8; }
+    .small-btn-dark {
+      background: #1f2329;
+      color: #fff;
+      border-color: #1f2329;
+    }
+    .small-btn-dark:hover { background: #333942; }
+    .hint {
+      font-size: 12px;
+      color: #8f959e;
+      margin-top: 6px;
+      line-height: 1.5;
+    }
+    .status-box {
+      background: #f8f9fb;
+      border-radius: 8px;
+      padding: 10px 12px;
+      font-size: 12.5px;
+      color: #4e5969;
+      line-height: 1.6;
+    }
+    input[type="range"] { width: 100%; accent-color: #1f2329; }
+    input[type="color"] {
+      width: 34px;
+      height: 30px;
+      padding: 2px;
+      border: 1px solid #dee0e3;
+      border-radius: 6px;
+      background: #fff;
+      cursor: pointer;
+      flex: 0 0 auto !important;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div id="result" class="result-box placeholder">点击下方按钮抽取一个任务</div>
+
+    <div class="actions">
+      <button id="drawBtn" class="btn btn-primary">抽取任务</button>
+      <button id="saveImgBtn" class="btn btn-save">生成配图</button>
+    </div>
+
+    <div id="toast" class="toast"></div>
+
+    <div class="footer">
+      <div>
+        <span id="statusText">共 0 个任务</span>
+        <button id="resetBtn" class="link-btn" style="display:none;">重置</button>
+      </div>
+      <div class="footer-right">
+        <button id="toggleScheduleBtn" class="link-btn">定时任务</button>
+        <button id="toggleCardBtn" class="link-btn">配图设置</button>
+        <button id="toggleEditorBtn" class="link-btn">编辑任务</button>
+      </div>
+    </div>
+
+    <!-- 定时任务面板（默认收起，NAS/Docker 模式下生效） -->
+    <div id="schedulePanel" class="panel">
+      <div class="field">
+        <div class="field-label">
+          <label class="checkbox-label">
+            <input type="checkbox" id="schedEnabled" />
+            开启每日定时自动生成配图
+          </label>
+          <span id="schedModeTag" style="font-size:12px;"></span>
+        </div>
+      </div>
+
+      <div class="field">
+        <div class="row">
+          <div>
+            <div class="field-label"><span>每天执行时间</span></div>
+            <input type="time" id="schedTime" value="00:00" />
+          </div>
+          <div>
+            <div class="field-label"><span>每次生成张数</span></div>
+            <input type="number" id="schedCount" value="20" min="1" max="500" />
+          </div>
+        </div>
+      </div>
+
+      <div class="field">
+        <div class="field-label"><span>定时生成的目录后缀</span></div>
+        <input type="text" id="schedSuffix" value="" placeholder="留空则直接用日期，如 2026-11-26" />
+      </div>
+
+      <div class="field">
+        <label class="checkbox-label">
+          <input type="checkbox" id="autoResetOnEmpty" checked />
+          所有任务全部抽完后，自动开启新一轮（本轮结束前绝不重复）
+        </label>
+      </div>
+
+      <div class="field">
+        <div class="row">
+          <button type="button" id="saveSchedBtn" class="small-btn small-btn-dark" style="flex:1 !important;">保存定时设置</button>
+          <button type="button" id="runBatchNowBtn" class="small-btn" style="flex:1 !important;">立即批量生成</button>
+        </div>
+      </div>
+
+      <div class="field">
+        <div id="schedStatusBox" class="status-box">尚未执行定时任务</div>
+      </div>
+    </div>
+
+    <!-- 配图设置面板（默认收起） -->
+    <div id="cardPanel" class="panel">
+      <div class="preview-wrap">
+        <canvas id="previewCanvas"></canvas>
+      </div>
+
+      <div class="field">
+        <div class="field-label"><span>配图文字（抽任务自动同步，也可手改）</span></div>
+        <textarea id="cardText" rows="2" placeholder="输入要印在图片上的字..."></textarea>
+      </div>
+
+      <div class="field">
+        <div class="field-label">
+          <span>画布比例</span>
+          <span id="sizeLabel">1080 × 1440</span>
+        </div>
+        <select id="ratioPreset">
+          <option value="1080x1440">小红书 3:4 (1080×1440)</option>
+          <option value="1080x1080">朋友圈 1:1 (1080×1080)</option>
+          <option value="1080x1920">竖屏 9:16 (1080×1920)</option>
+          <option value="custom">自定义尺寸</option>
+        </select>
+        <div id="customSizeRow" class="row" style="margin-top:8px; display:none;">
+          <input type="number" id="customW" value="1080" min="200" max="4096" placeholder="宽" />
+          <input type="number" id="customH" value="1440" min="200" max="4096" placeholder="高" />
+        </div>
+      </div>
+
+      <div class="field">
+        <div class="field-label">
+          <span>字体与字号</span>
+          <span id="fontSizeVal">64px</span>
+        </div>
+        <select id="fontFamily" style="margin-bottom:8px;">
+          <option value='"PingFang SC", "Microsoft YaHei", "Noto Sans SC", sans-serif'>简约黑体（默认）</option>
+          <option value='"Songti SC", "SimSun", "Noto Serif SC", serif'>文艺宋体</option>
+          <option value='"Kaiti SC", "KaiTi", "STKaiti", serif'>手写楷体</option>
+          <option value='"YouYuan", "PingFang SC", "Microsoft YaHei", sans-serif'>柔和圆体</option>
+          <option value='"Consolas", "SFMono-Regular", "Microsoft YaHei", monospace'>等宽代码风</option>
+        </select>
+        <input type="range" id="fontSize" min="32" max="130" value="64" />
+      </div>
+
+      <div class="field">
+        <div class="field-label"><span>背景配色 / 底图</span></div>
+        <div class="row" style="margin-bottom:8px;">
+          <div class="swatches" id="themeSwatches"></div>
+          <input type="color" id="bgColor" title="背景色" value="#ffffff" />
+          <input type="color" id="textColor" title="文字色" value="#1f2329" />
+        </div>
+        <div class="row">
+          <input type="file" id="bgImageInput" accept="image/*" style="font-size:12px; padding:5px;" />
+          <button type="button" id="clearBgImgBtn" class="small-btn" style="display:none;">清除底图</button>
+        </div>
+      </div>
+
+      <div class="field">
+        <div class="field-label">
+          <label class="checkbox-label">
+            <input type="checkbox" id="showDate" checked />
+            显示默认日期
+          </label>
+          <select id="datePos" style="width:auto; padding:4px 8px; font-size:12px;">
+            <option value="bottom-right">右下角</option>
+            <option value="bottom-center">底部居中</option>
+            <option value="top-left">左上角</option>
+          </select>
+        </div>
+        <input type="date" id="dateValue" />
+      </div>
+
+      <div class="field">
+        <div class="field-label">
+          <span>保存目录与文件夹后缀</span>
+          <span id="folderPreview" style="color:#1f2329; font-weight:500;"></span>
+        </div>
+        <div class="row">
+          <input type="text" id="folderSuffix" placeholder="留空则只用日期目录" value="" />
+          <button type="button" id="pickDirBtn" class="small-btn">选择文件夹</button>
+        </div>
+        <div id="saveModeHint" class="hint"></div>
+      </div>
+    </div>
+
+    <!-- 编辑任务面板（默认收起） -->
+    <div id="editorPanel" class="panel">
+      <div class="field">
+        <div class="field-label">
+          <span>每行一个任务（自动去重并保存）</span>
+          <label class="checkbox-label">
+            <input type="checkbox" id="noRepeat" checked />
+            本轮不重复
+          </label>
+        </div>
+        <textarea id="taskInput" rows="8" placeholder="输入任务，每行一条..."></textarea>
+        <div class="row" style="margin-top:8px;">
+          <input type="file" id="importTxtInput" accept=".txt,.md,.csv,text/plain" style="display:none;" />
+          <button type="button" id="importTxtBtn" class="small-btn">导入 TXT</button>
+          <button type="button" id="exportTxtBtn" class="small-btn">导出 TXT</button>
+        </div>
+        <div class="hint">每行 1 条任务（不要序号/空行）；修改或导入时，已抽过的任务不会重复进入本轮剩余池。</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const STORAGE_KEY = 'minimal_task_picker_v3';
+    const DEFAULT_TASKS = [
+      '整理今天的待办清单',
+      '阅读 20 分钟',
+      '站起来活动拉伸 5 分钟',
+      '喝一杯温水',
+      '清理桌面和下载文件夹'
+    ];
+
+    const THEMES = [
+      { name: '极简白', bg: '#ffffff', card: '#f8f9fb', text: '#1f2329', accent: '#8f959e' },
+      { name: '暖纸米', bg: '#f6f1e7', card: '#fbf8f2', text: '#3a3226', accent: '#9c8b73' },
+      { name: '雾霾蓝', bg: '#e8eff5', card: '#f4f8fb', text: '#1e3346', accent: '#6d859c' },
+      { name: '温柔粉', bg: '#f9ecef', card: '#fdf6f7', text: '#4a2c35', accent: '#a87d89' },
+      { name: '森系绿', bg: '#eaf2ec', card: '#f4f9f5', text: '#213b2a', accent: '#6b8c76' },
+      { name: '暗夜黑', bg: '#16181d', card: '#20232a', text: '#f3f4f6', accent: '#9ca3af' }
+    ];
+
+    const resultEl = document.getElementById('result');
+    const drawBtn = document.getElementById('drawBtn');
+    const saveImgBtn = document.getElementById('saveImgBtn');
+    const toastEl = document.getElementById('toast');
+    const statusText = document.getElementById('statusText');
+    const resetBtn = document.getElementById('resetBtn');
+    const toggleScheduleBtn = document.getElementById('toggleScheduleBtn');
+    const toggleCardBtn = document.getElementById('toggleCardBtn');
+    const toggleEditorBtn = document.getElementById('toggleEditorBtn');
+    const schedulePanel = document.getElementById('schedulePanel');
+    const cardPanel = document.getElementById('cardPanel');
+    const editorPanel = document.getElementById('editorPanel');
+    const taskInput = document.getElementById('taskInput');
+    const importTxtInput = document.getElementById('importTxtInput');
+    const importTxtBtn = document.getElementById('importTxtBtn');
+    const exportTxtBtn = document.getElementById('exportTxtBtn');
+    const noRepeatEl = document.getElementById('noRepeat');
+
+    // Schedule controls
+    const schedEnabledEl = document.getElementById('schedEnabled');
+    const schedTimeEl = document.getElementById('schedTime');
+    const schedCountEl = document.getElementById('schedCount');
+    const schedSuffixEl = document.getElementById('schedSuffix');
+    const autoResetOnEmptyEl = document.getElementById('autoResetOnEmpty');
+    const saveSchedBtn = document.getElementById('saveSchedBtn');
+    const runBatchNowBtn = document.getElementById('runBatchNowBtn');
+    const schedModeTag = document.getElementById('schedModeTag');
+    const schedStatusBox = document.getElementById('schedStatusBox');
+
+    // Card controls
+    const previewCanvas = document.getElementById('previewCanvas');
+    const cardTextEl = document.getElementById('cardText');
+    const ratioPresetEl = document.getElementById('ratioPreset');
+    const customSizeRow = document.getElementById('customSizeRow');
+    const customWEl = document.getElementById('customW');
+    const customHEl = document.getElementById('customH');
+    const sizeLabelEl = document.getElementById('sizeLabel');
+    const fontFamilyEl = document.getElementById('fontFamily');
+    const fontSizeEl = document.getElementById('fontSize');
+    const fontSizeValEl = document.getElementById('fontSizeVal');
+    const themeSwatchesEl = document.getElementById('themeSwatches');
+    const bgColorEl = document.getElementById('bgColor');
+    const textColorEl = document.getElementById('textColor');
+    const bgImageInput = document.getElementById('bgImageInput');
+    const clearBgImgBtn = document.getElementById('clearBgImgBtn');
+    const showDateEl = document.getElementById('showDate');
+    const dateValueEl = document.getElementById('dateValue');
+    const datePosEl = document.getElementById('datePos');
+    const folderSuffixEl = document.getElementById('folderSuffix');
+    const folderPreviewEl = document.getElementById('folderPreview');
+    const pickDirBtn = document.getElementById('pickDirBtn');
+    const saveModeHint = document.getElementById('saveModeHint');
+
+    let serverMode = false;
+    let serverOutputDir = '';
+    let serverFontLoaded = '';
+    let selectedDirHandle = null;
+    let bgImageObj = null;
+    let syncTimer = null;
+
+    function getTodayStr() {
+      const d = new Date();
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    }
+
+    function defaultLocalState() {
+      return {
+        tasks: [...DEFAULT_TASKS],
+        remaining: [...DEFAULT_TASKS],
+        round: 1,
+        noRepeat: true,
+        currentTask: '',
+        card: {
+          ratio: '1080x1440',
+          customW: 1080,
+          customH: 1440,
+          fontFamily: '"PingFang SC", "Microsoft YaHei", "Noto Sans SC", sans-serif',
+          fontSize: 64,
+          themeIndex: 0,
+          bgColor: '#ffffff',
+          cardColor: '#f8f9fb',
+          textColor: '#1f2329',
+          accentColor: '#8f959e',
+          showDate: true,
+          datePos: 'bottom-right',
+          suffix: ''
+        },
+        schedule: {
+          enabled: false,
+          time: '00:00',
+          count: 20,
+          suffix: '',
+          autoResetOnEmpty: true,
+          lastRunDate: '',
+          lastRunTime: '',
+          lastRunSummary: ''
+        }
+      };
+    }
+
+    let state = loadLocalState();
+
+    function loadLocalState() {
+      const def = defaultLocalState();
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          return {
+            ...def,
+            ...parsed,
+            tasks: Array.isArray(parsed.tasks) ? parsed.tasks : def.tasks,
+            remaining: Array.isArray(parsed.remaining) ? parsed.remaining : def.remaining,
+            card: { ...def.card, ...(parsed.card || {}) },
+            schedule: { ...def.schedule, ...(parsed.schedule || {}) }
+          };
+        }
+      } catch (_) {}
+      return def;
+    }
+
+    function persistLocal() {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    }
+
+    function scheduleSyncToServer(payload) {
+      persistLocal();
+      if (!serverMode) return;
+      clearTimeout(syncTimer);
+      syncTimer = setTimeout(async () => {
+        try {
+          const res = await fetch('/api/state', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+          const data = await res.json();
+          if (data && data.ok && data.state) {
+            state = data.state;
+            updateStatus();
+            updateScheduleUI();
+          }
+        } catch (_) {}
+      }, 250);
+    }
+
+    function showToast(msg, isError = false) {
+      toastEl.textContent = msg;
+      toastEl.classList.toggle('error', isError);
+    }
+
+    function secureRandomInt(max) {
+      const buf = new Uint32Array(1);
+      crypto.getRandomValues(buf);
+      return buf[0] % max;
+    }
+
+    function updateStatus() {
+      const total = state.tasks.length;
+      if (total === 0) {
+        statusText.textContent = '暂无任务';
+        resetBtn.style.display = 'none';
+        return;
+      }
+      if (state.noRepeat) {
+        const rem = state.remaining.length;
+        statusText.textContent = `第 ${state.round || 1} 轮 · 剩余 ${rem}/${total}`;
+        resetBtn.style.display = rem < total || (state.round || 1) > 1 ? 'inline-block' : 'none';
+      } else {
+        statusText.textContent = `共 ${total} 个任务`;
+        resetBtn.style.display = 'none';
+      }
+    }
+
+    function showResult(text, isPlaceholder = false) {
+      resultEl.classList.add('pop');
+      setTimeout(() => {
+        resultEl.textContent = text;
+        resultEl.classList.toggle('placeholder', isPlaceholder);
+        resultEl.classList.remove('pop');
+      }, 90);
+    }
+
+    async function drawTask() {
+      if (serverMode) {
+        drawBtn.disabled = true;
+        try {
+          const res = await fetch('/api/draw', { method: 'POST' });
+          const data = await res.json();
+          if (data.state) state = data.state;
+          if (!data.ok) {
+            showToast(data.error || '没有可抽取的任务', true);
+            updateStatus();
+            return;
+          }
+          showResult(data.task, false);
+          cardTextEl.value = data.task;
+          showToast('');
+          updateStatus();
+          renderCanvas(previewCanvas, true);
+        } catch (err) {
+          showToast(`抽取失败：${err.message}`, true);
+        } finally {
+          drawBtn.disabled = false;
+        }
+        return;
+      }
+
+      if (state.tasks.length === 0) {
+        openPanel('editor');
+        showResult('请先在下方输入任务', true);
+        return;
+      }
+      let task = '';
+      if (!state.noRepeat) {
+        task = state.tasks[secureRandomInt(state.tasks.length)];
+      } else {
+        if (state.remaining.length === 0) {
+          state.remaining = [...state.tasks];
+          state.round = (state.round || 1) + 1;
+        }
+        const idx = secureRandomInt(state.remaining.length);
+        task = state.remaining.splice(idx, 1)[0];
+      }
+      state.currentTask = task;
+      persistLocal();
+      showResult(task, false);
+      cardTextEl.value = task;
+      showToast('');
+      updateStatus();
+      renderCanvas(previewCanvas, true);
+    }
+
+    function openPanel(which) {
+      const panels = [
+        ['schedule', schedulePanel, toggleScheduleBtn],
+        ['card', cardPanel, toggleCardBtn],
+        ['editor', editorPanel, toggleEditorBtn]
+      ];
+      for (const [key, panel, btn] of panels) {
+        const shouldOpen = key === which && !panel.classList.contains('open');
+        panel.classList.toggle('open', shouldOpen);
+        btn.classList.toggle('active', shouldOpen);
+        if (shouldOpen && key === 'card') renderCanvas(previewCanvas, true);
+      }
+    }
+
+    function getCanvasDims() {
+      if (state.card.ratio === 'custom') {
+        const w = Math.max(200, Math.min(4096, Number(state.card.customW) || 1080));
+        const h = Math.max(200, Math.min(4096, Number(state.card.customH) || 1440));
+        return { w, h };
+      }
+      const [w, h] = state.card.ratio.split('x').map(Number);
+      return { w, h };
+    }
+
+    function getFolderName() {
+      const dateStr = dateValueEl.value || getTodayStr();
+      const suffix = (state.card.suffix || '').trim().replace(/[\\/:*?"<>|]/g, '');
+      return suffix ? `${dateStr}_${suffix}` : dateStr;
+    }
+
+    function updateFolderPreview() {
+      folderPreviewEl.textContent = `子文件夹：${getFolderName()}/`;
+      if (serverMode) {
+        pickDirBtn.style.display = 'none';
+        saveModeHint.textContent = `NAS/Docker 模式：将直接保存到 ${serverOutputDir || '/output'}/${getFolderName()}/` +
+          (serverFontLoaded ? `（服务端字体：${serverFontLoaded}）` : '（提示：放一个 .ttf/.ttc 中文字体到 /fonts 目录可自定义定时生成字体）');
+      } else if (window.showDirectoryPicker) {
+        pickDirBtn.style.display = 'inline-block';
+        saveModeHint.textContent = selectedDirHandle
+          ? `已选本地目录：「${selectedDirHandle.name}」，点击「生成配图」直接存入子文件夹`
+          : '首次点击「生成配图」或右侧按钮选择一次本地文件夹即可自动建子文件夹保存';
+      } else {
+        pickDirBtn.style.display = 'none';
+        saveModeHint.textContent = '本地离线模式：点击「生成配图」将自动下载 PNG 图片（部署到 NAS Docker 后可直接写目录和定时生成）';
+      }
+    }
+
+    function updateScheduleUI() {
+      schedEnabledEl.checked = !!state.schedule.enabled;
+      schedTimeEl.value = state.schedule.time || '00:00';
+      schedCountEl.value = state.schedule.count || 20;
+      schedSuffixEl.value = state.schedule.suffix || '';
+      autoResetOnEmptyEl.checked = state.schedule.autoResetOnEmpty !== false;
+
+      if (serverMode) {
+        schedModeTag.textContent = state.schedule.enabled ? '● 运行中' : '○ 未开启';
+        schedModeTag.style.color = state.schedule.enabled ? '#0f766e' : '#8f959e';
+        saveSchedBtn.disabled = false;
+        runBatchNowBtn.disabled = false;
+        const lines = [];
+        lines.push(`下次计划：${state.schedule.enabled ? `每天 ${state.schedule.time} 自动生成 ${state.schedule.count} 张` : '未开启'}`);
+        if (state.schedule.lastRunSummary) {
+          lines.push(`最近执行（${state.schedule.lastRunTime || ''}）：${state.schedule.lastRunSummary}`);
+        } else {
+          lines.push('最近执行：暂无记录');
+        }
+        schedStatusBox.textContent = lines.join('\n');
+        schedStatusBox.style.whiteSpace = 'pre-line';
+      } else {
+        schedModeTag.textContent = '需 Docker / NAS 运行';
+        schedModeTag.style.color = '#d97706';
+        saveSchedBtn.disabled = true;
+        runBatchNowBtn.disabled = true;
+        schedStatusBox.textContent = '当前是直接双击打开的静态网页，无法在后台凌晨自动执行。使用 docker compose 部署到 NAS 后，定时任务和「立即批量生成」会自动启用。';
+      }
+    }
+
+    function wrapLines(ctx, text, maxWidth) {
+      const paragraphs = (text || '').split(/\r?\n/);
+      const lines = [];
+      for (const para of paragraphs) {
+        if (!para) { lines.push(''); continue; }
+        let line = '';
+        for (const ch of para) {
+          const test = line + ch;
+          if (ctx.measureText(test).width > maxWidth && line) {
+            lines.push(line);
+            line = ch;
+          } else {
+            line = test;
+          }
+        }
+        if (line) lines.push(line);
+      }
+      return lines;
+    }
+
+    function drawRoundRect(ctx, x, y, w, h, r) {
+      ctx.beginPath();
+      ctx.moveTo(x + r, y);
+      ctx.arcTo(x + w, y, x + w, y + h, r);
+      ctx.arcTo(x + w, y + h, x, y + h, r);
+      ctx.arcTo(x, y + h, x, y, r);
+      ctx.arcTo(x, y, x + w, y, r);
+      ctx.closePath();
+    }
+
+    function renderCanvas(targetCanvas, isPreview = false) {
+      const { w, h } = getCanvasDims();
+      sizeLabelEl.textContent = `${w} × ${h}`;
+      const scale = isPreview ? Math.min(1, 520 / Math.max(w, h)) : 1;
+      targetCanvas.width = Math.round(w * scale);
+      targetCanvas.height = Math.round(h * scale);
+
+      const ctx = targetCanvas.getContext('2d');
+      ctx.save();
+      ctx.scale(scale, scale);
+
+      if (bgImageObj) {
+        const imgRatio = bgImageObj.width / bgImageObj.height;
+        const canvasRatio = w / h;
+        let sx = 0, sy = 0, sw = bgImageObj.width, sh = bgImageObj.height;
+        if (imgRatio > canvasRatio) {
+          sw = bgImageObj.height * canvasRatio;
+          sx = (bgImageObj.width - sw) / 2;
+        } else {
+          sh = bgImageObj.width / canvasRatio;
+          sy = (bgImageObj.height - sh) / 2;
+        }
+        ctx.drawImage(bgImageObj, sx, sy, sw, sh, 0, 0, w, h);
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.72)';
+        const pad = Math.round(Math.min(w, h) * 0.07);
+        drawRoundRect(ctx, pad, pad, w - pad * 2, h - pad * 2, 36);
+        ctx.fill();
+      } else {
+        ctx.fillStyle = state.card.bgColor;
+        ctx.fillRect(0, 0, w, h);
+        const pad = Math.round(Math.min(w, h) * 0.065);
+        ctx.fillStyle = state.card.cardColor || state.card.bgColor;
+        drawRoundRect(ctx, pad, pad, w - pad * 2, h - pad * 2, 36);
+        ctx.fill();
+      }
+
+      const text = (cardTextEl.value || state.currentTask || '你好').trim();
+      const fontSize = Number(state.card.fontSize) || 64;
+      const lineHeight = Math.round(fontSize * 1.55);
+      const maxWidth = w - Math.round(w * 0.28);
+
+      ctx.fillStyle = state.card.textColor;
+      ctx.font = `600 ${fontSize}px ${state.card.fontFamily}`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+
+      const lines = wrapLines(ctx, text, maxWidth);
+      const totalH = lines.length * lineHeight;
+      const startY = (h - totalH) / 2 + lineHeight / 2;
+      lines.forEach((line, idx) => ctx.fillText(line, w / 2, startY + idx * lineHeight));
+
+      if (state.card.showDate) {
+        const dateStr = dateValueEl.value || getTodayStr();
+        const dateFont = Math.max(24, Math.round(Math.min(w, h) * 0.03));
+        ctx.fillStyle = state.card.accentColor || '#8f959e';
+        ctx.font = `400 ${dateFont}px ${state.card.fontFamily}`;
+        const margin = Math.round(Math.min(w, h) * 0.11);
+        if (state.card.datePos === 'bottom-right') {
+          ctx.textAlign = 'right'; ctx.textBaseline = 'bottom';
+          ctx.fillText(dateStr, w - margin, h - margin);
+        } else if (state.card.datePos === 'bottom-center') {
+          ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+          ctx.fillText(dateStr, w / 2, h - margin);
+        } else {
+          ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+          ctx.fillText(dateStr, margin, margin);
+        }
+      }
+      ctx.restore();
+    }
+
+    function buildFileName(text) {
+      const now = new Date();
+      const ts = `${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}${String(now.getSeconds()).padStart(2, '0')}`;
+      const clean = (text || 'task').replace(/[\r\n]+/g, ' ').replace(/[\\/:*?"<>|]/g, '').trim().slice(0, 16) || 'task';
+      return `${ts}_${clean}.png`;
+    }
+
+    async function saveImage() {
+      const text = (cardTextEl.value || state.currentTask || '').trim();
+      if (!text) {
+        showToast('请先抽取一个任务，或在「配图设置」里输入文字', true);
+        return;
+      }
+      const exportCanvas = document.createElement('canvas');
+      renderCanvas(exportCanvas, false);
+      const folderName = getFolderName();
+      const fileName = buildFileName(text);
+
+      if (serverMode) {
+        saveImgBtn.disabled = true;
+        try {
+          const resp = await fetch('/api/save', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              imageBase64: exportCanvas.toDataURL('image/png'),
+              date: dateValueEl.value || getTodayStr(),
+              suffix: (state.card.suffix || '').trim(),
+              fileName
+            })
+          });
+          const json = await resp.json();
+          if (!resp.ok || !json.ok) throw new Error(json.error || '保存失败');
+          showToast(`已保存：${json.path}`);
+        } catch (err) {
+          showToast(`保存失败：${err.message}`, true);
+        } finally {
+          saveImgBtn.disabled = false;
+        }
+        return;
+      }
+
+      if (window.showDirectoryPicker) {
+        try {
+          if (!selectedDirHandle) {
+            selectedDirHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
+            updateFolderPreview();
+          }
+          const subDir = await selectedDirHandle.getDirectoryHandle(folderName, { create: true });
+          const fileHandle = await subDir.getFileHandle(fileName, { create: true });
+          const writable = await fileHandle.createWritable();
+          const blob = await new Promise(resolve => exportCanvas.toBlob(resolve, 'image/png'));
+          await writable.write(blob);
+          await writable.close();
+          showToast(`已保存：${selectedDirHandle.name}/${folderName}/${fileName}`);
+          return;
+        } catch (err) {
+          if (err && err.name === 'AbortError') { showToast('已取消选择目录', true); return; }
+        }
+      }
+
+      const link = document.createElement('a');
+      link.download = `${folderName}_${fileName}`;
+      link.href = exportCanvas.toDataURL('image/png');
+      link.click();
+      showToast(`已下载：${folderName}_${fileName}`);
+    }
+
+    function initThemes() {
+      themeSwatchesEl.innerHTML = '';
+      THEMES.forEach((t, idx) => {
+        const el = document.createElement('button');
+        el.type = 'button';
+        el.className = 'swatch' + (state.card.themeIndex === idx ? ' active' : '');
+        el.title = t.name;
+        el.style.background = t.bg;
+        el.addEventListener('click', () => {
+          state.card.themeIndex = idx;
+          state.card.bgColor = t.bg;
+          state.card.cardColor = t.card;
+          state.card.textColor = t.text;
+          state.card.accentColor = t.accent;
+          bgColorEl.value = t.bg;
+          textColorEl.value = t.text;
+          scheduleSyncToServer({ card: state.card });
+          initThemes();
+          renderCanvas(previewCanvas, true);
+        });
+        themeSwatchesEl.appendChild(el);
+      });
+    }
+
+    function applyStateToUI() {
+      taskInput.value = state.tasks.join('\n');
+      noRepeatEl.checked = state.noRepeat;
+      if (state.currentTask) {
+        showResult(state.currentTask, false);
+        cardTextEl.value = state.currentTask;
+      }
+      ratioPresetEl.value = state.card.ratio || '1080x1440';
+      customSizeRow.style.display = state.card.ratio === 'custom' ? 'flex' : 'none';
+      customWEl.value = state.card.customW || 1080;
+      customHEl.value = state.card.customH || 1440;
+      fontFamilyEl.value = state.card.fontFamily;
+      fontSizeEl.value = state.card.fontSize || 64;
+      fontSizeValEl.textContent = `${state.card.fontSize || 64}px`;
+      bgColorEl.value = state.card.bgColor || '#ffffff';
+      textColorEl.value = state.card.textColor || '#1f2329';
+      showDateEl.checked = state.card.showDate !== false;
+      datePosEl.value = state.card.datePos || 'bottom-right';
+      folderSuffixEl.value = state.card.suffix || '';
+
+      initThemes();
+      updateStatus();
+      updateFolderPreview();
+      updateScheduleUI();
+    }
+
+    async function initServerSync() {
+      if (location.protocol !== 'file:') {
+        try {
+          const hRes = await fetch('/api/health', { cache: 'no-store' });
+          if (hRes.ok) {
+            const hData = await hRes.json();
+            if (hData && hData.mode === 'server') {
+              serverMode = true;
+              serverOutputDir = hData.outputDir || '/output';
+              serverFontLoaded = hData.fontLoaded || '';
+              const sRes = await fetch('/api/state', { cache: 'no-store' });
+              if (sRes.ok) {
+                const sData = await sRes.json();
+                if (sData && sData.ok && sData.state) state = sData.state;
+              }
+            }
+          }
+        } catch (_) {}
+      }
+      applyStateToUI();
+    }
+
+    // Events
+    drawBtn.addEventListener('click', drawTask);
+    saveImgBtn.addEventListener('click', saveImage);
+
+    resetBtn.addEventListener('click', async () => {
+      if (serverMode) {
+        const res = await fetch('/api/reset', { method: 'POST' });
+        const data = await res.json();
+        if (data.state) state = data.state;
+      } else {
+        state.remaining = [...state.tasks];
+        state.round = 1;
+        persistLocal();
+      }
+      showResult('已重置本轮，点击抽取任务', true);
+      updateStatus();
+    });
+
+    toggleScheduleBtn.addEventListener('click', () => openPanel('schedule'));
+    toggleCardBtn.addEventListener('click', () => openPanel('card'));
+    toggleEditorBtn.addEventListener('click', () => openPanel('editor'));
+
+    function syncTaskListFromText(rawText) {
+      const list = Array.from(new Set(rawText.split(/\r?\n/).map(s => s.trim()).filter(Boolean)));
+      if (!serverMode) {
+        const oldSet = new Set(state.tasks);
+        const newSet = new Set(list);
+        const kept = state.remaining.filter(t => newSet.has(t));
+        const added = list.filter(t => !oldSet.has(t));
+        state.tasks = list;
+        state.remaining = kept.concat(added);
+        persistLocal();
+        updateStatus();
+      } else {
+        state.tasks = list;
+        scheduleSyncToServer({ tasks: list });
+      }
+      return list.length;
+    }
+
+    taskInput.addEventListener('input', () => {
+      syncTaskListFromText(taskInput.value);
+    });
+
+    importTxtBtn.addEventListener('click', () => importTxtInput.click());
+    importTxtInput.addEventListener('change', (e) => {
+      const file = e.target.files && e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        const text = String(reader.result || '');
+        taskInput.value = text;
+        const count = syncTaskListFromText(text);
+        showToast(`已导入 ${count} 条任务`);
+        importTxtInput.value = '';
+      };
+      reader.readAsText(file, 'utf-8');
+    });
+
+    exportTxtBtn.addEventListener('click', () => {
+      const blob = new Blob([state.tasks.join('\n') + '\n'], { type: 'text/plain;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'tasks.txt';
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+
+    noRepeatEl.addEventListener('change', () => {
+      state.noRepeat = noRepeatEl.checked;
+      scheduleSyncToServer({ noRepeat: state.noRepeat });
+      updateStatus();
+    });
+
+    saveSchedBtn.addEventListener('click', async () => {
+      state.schedule.enabled = schedEnabledEl.checked;
+      state.schedule.time = schedTimeEl.value || '00:00';
+      state.schedule.count = Math.max(1, Number(schedCountEl.value) || 20);
+      state.schedule.suffix = (schedSuffixEl.value || '').trim();
+      state.schedule.autoResetOnEmpty = autoResetOnEmptyEl.checked;
+      try {
+        const res = await fetch('/api/state', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ schedule: state.schedule })
+        });
+        const data = await res.json();
+        if (data.ok && data.state) {
+          state = data.state;
+          updateScheduleUI();
+          showToast('定时任务设置已保存');
+        }
+      } catch (err) {
+        showToast(`保存失败：${err.message}`, true);
+      }
+    });
+
+    runBatchNowBtn.addEventListener('click', async () => {
+      runBatchNowBtn.disabled = true;
+      showToast('正在批量生成配图...');
+      try {
+        const res = await fetch('/api/batch', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            count: Math.max(1, Number(schedCountEl.value) || 20),
+            date: dateValueEl.value || getTodayStr(),
+            suffix: (schedSuffixEl.value || '').trim()
+          })
+        });
+        const data = await res.json();
+        if (data.state) state = data.state;
+        updateStatus();
+        updateScheduleUI();
+        if (!data.ok) {
+          showToast(data.error || '批量生成失败', true);
+        } else {
+          showToast(`批量完成：已生成 ${data.generated} 张 -> ${data.folder}/`);
+        }
+      } catch (err) {
+        showToast(`批量生成失败：${err.message}`, true);
+      } finally {
+        runBatchNowBtn.disabled = false;
+      }
+    });
+
+    cardTextEl.addEventListener('input', () => renderCanvas(previewCanvas, true));
+    ratioPresetEl.addEventListener('change', () => {
+      state.card.ratio = ratioPresetEl.value;
+      customSizeRow.style.display = state.card.ratio === 'custom' ? 'flex' : 'none';
+      scheduleSyncToServer({ card: state.card });
+      renderCanvas(previewCanvas, true);
+    });
+    [customWEl, customHEl].forEach(el => el.addEventListener('input', () => {
+      state.card.customW = Number(customWEl.value) || 1080;
+      state.card.customH = Number(customHEl.value) || 1440;
+      scheduleSyncToServer({ card: state.card });
+      renderCanvas(previewCanvas, true);
+    }));
+    fontFamilyEl.addEventListener('change', () => {
+      state.card.fontFamily = fontFamilyEl.value;
+      scheduleSyncToServer({ card: state.card });
+      renderCanvas(previewCanvas, true);
+    });
+    fontSizeEl.addEventListener('input', () => {
+      state.card.fontSize = Number(fontSizeEl.value);
+      fontSizeValEl.textContent = `${state.card.fontSize}px`;
+      scheduleSyncToServer({ card: state.card });
+      renderCanvas(previewCanvas, true);
+    });
+    bgColorEl.addEventListener('input', () => {
+      state.card.themeIndex = -1;
+      state.card.bgColor = bgColorEl.value;
+      state.card.cardColor = bgColorEl.value;
+      scheduleSyncToServer({ card: state.card });
+      initThemes();
+      renderCanvas(previewCanvas, true);
+    });
+    textColorEl.addEventListener('input', () => {
+      state.card.themeIndex = -1;
+      state.card.textColor = textColorEl.value;
+      scheduleSyncToServer({ card: state.card });
+      initThemes();
+      renderCanvas(previewCanvas, true);
+    });
+    bgImageInput.addEventListener('change', (e) => {
+      const file = e.target.files && e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        const img = new Image();
+        img.onload = () => {
+          bgImageObj = img;
+          clearBgImgBtn.style.display = 'inline-block';
+          renderCanvas(previewCanvas, true);
+        };
+        img.src = reader.result;
+      };
+      reader.readAsDataURL(file);
+    });
+    clearBgImgBtn.addEventListener('click', () => {
+      bgImageObj = null; bgImageInput.value = '';
+      clearBgImgBtn.style.display = 'none';
+      renderCanvas(previewCanvas, true);
+    });
+    showDateEl.addEventListener('change', () => {
+      state.card.showDate = showDateEl.checked;
+      scheduleSyncToServer({ card: state.card });
+      renderCanvas(previewCanvas, true);
+    });
+    dateValueEl.addEventListener('input', () => {
+      updateFolderPreview();
+      renderCanvas(previewCanvas, true);
+    });
+    datePosEl.addEventListener('change', () => {
+      state.card.datePos = datePosEl.value;
+      scheduleSyncToServer({ card: state.card });
+      renderCanvas(previewCanvas, true);
+    });
+    folderSuffixEl.addEventListener('input', () => {
+      state.card.suffix = folderSuffixEl.value;
+      scheduleSyncToServer({ card: state.card });
+      updateFolderPreview();
+    });
+    pickDirBtn.addEventListener('click', async () => {
+      if (!window.showDirectoryPicker) return;
+      try {
+        selectedDirHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
+        updateFolderPreview();
+        showToast(`已绑定保存目录：${selectedDirHandle.name}`);
+      } catch (_) {}
+    });
+
+    document.addEventListener('keydown', (e) => {
+      const tag = document.activeElement && document.activeElement.tagName;
+      if (tag === 'TEXTAREA' || tag === 'INPUT' || tag === 'SELECT') return;
+      if (e.code === 'Space' || e.code === 'Enter') {
+        e.preventDefault();
+        drawTask();
+      }
+    });
+
+    dateValueEl.value = getTodayStr();
+    initServerSync();
+  </script>
+</body>
+</html>

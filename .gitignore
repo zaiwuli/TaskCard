@@ -1,0 +1,17 @@
+# Binaries
+*.exe
+server
+
+# Local runtime data & outputs
+output/
+data/
+fonts/
+
+# Temporary / reference folders
+spin-the-wheel/
+*.zip
+*.png
+_out*.txt
+_err*.txt
+_gout.txt
+_gerr.txt
