@@ -24,18 +24,9 @@ services:
     container_name: taskcard
     ports:
       - "8080:8080"
-    environment:
-      - TZ=Asia/Shanghai
-      - GOMEMLIMIT=128MiB
-      - SCHEDULE_ENABLED=true
-      - SCHEDULE_TIME=00:00
-      - SCHEDULE_COUNT=20
-      - SCHEDULE_SUFFIX=
     volumes:
       - ./output:/output
       - ./data:/data
-      - ./fonts:/fonts
-    mem_limit: 256m
     restart: unless-stopped
 ```
 
