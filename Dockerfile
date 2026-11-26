@@ -10,6 +10,7 @@ WORKDIR /app
 RUN apk add --no-cache tzdata font-noto-cjk
 COPY --from=builder /app/server /app/server
 ENV TZ=Asia/Shanghai
+ENV GOMEMLIMIT=128MiB
 ENV ADDR=:8080
 ENV OUTPUT_DIR=/output
 ENV DATA_DIR=/data

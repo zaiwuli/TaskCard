@@ -13,12 +13,35 @@
 
 ---
 
-## 快速部署（NAS / Docker）
+## 快速部署（NAS / Docker Compose）
 
+仓库已配置 GitHub Actions 自动构建 `linux/amd64` + `linux/arm64` 多架构镜像，NAS 直接拉取运行即可（无需在 NAS 上编译）：
+
+```yaml
+services:
+  taskcard:
+    image: ghcr.io/zaiwuli/taskcard:latest
+    container_name: taskcard
+    ports:
+      - "8080:8080"
+    environment:
+      - TZ=Asia/Shanghai
+      - GOMEMLIMIT=128MiB
+      - SCHEDULE_ENABLED=true
+      - SCHEDULE_TIME=00:00
+      - SCHEDULE_COUNT=20
+      - SCHEDULE_SUFFIX=
+    volumes:
+      - ./output:/output
+      - ./data:/data
+      - ./fonts:/fonts
+    mem_limit: 256m
+    restart: unless-stopped
+```
+
+启动命令：
 ```bash
-git clone https://github.com/zaiwuli/TaskCard.git
-cd TaskCard
-docker compose up -d --build
+docker compose up -d
 ```
 
 按需修改 `docker-compose.yml` 中的宿主机挂载目录：

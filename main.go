@@ -17,6 +17,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"sync"
@@ -649,6 +650,7 @@ func (s *Store) runBatch(count int, dateStr, suffix string, trigger string) (map
 	s.mu.Unlock()
 
 	log.Printf("batch done: %s", summary)
+	debug.FreeOSMemory()
 	return map[string]any{
 		"ok":        true,
 		"folder":    folderName,
