@@ -2,20 +2,25 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <title>TaskCard · 随机任务抽取 & 配图生成</title>
   <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+    html { -webkit-text-size-adjust: 100%; }
     body {
       font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
       background: #f5f6f8;
       color: #1f2329;
       min-height: 100vh;
+      min-height: 100dvh;
       display: flex;
       align-items: center;
       justify-content: center;
-      padding: 24px 16px;
+      padding: calc(20px + env(safe-area-inset-top)) 16px calc(24px + env(safe-area-inset-bottom));
     }
+    button, select, input, textarea { touch-action: manipulation; }
     .container {
       width: 100%;
       max-width: 480px;
@@ -273,6 +278,101 @@
       background: #fff;
       cursor: pointer;
       flex: 0 0 auto !important;
+    }
+
+    /* Mobile Optimization */
+    @media (max-width: 600px) {
+      body {
+        align-items: flex-start;
+        padding: calc(12px + env(safe-area-inset-top)) 12px calc(28px + env(safe-area-inset-bottom));
+      }
+      .container {
+        padding: 20px 18px 18px;
+        border-radius: 18px;
+      }
+      .top-bar {
+        margin-bottom: 14px;
+      }
+      .lib-switcher {
+        max-width: 72%;
+        min-height: 38px;
+        padding: 6px 12px;
+        font-size: 15px;
+      }
+      .result-box {
+        min-height: 148px;
+        padding: 22px 16px;
+        margin-bottom: 18px;
+        font-size: 20px;
+      }
+      .btn {
+        height: 52px;
+        font-size: 16px;
+        border-radius: 14px;
+      }
+      .footer {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 10px;
+        margin-top: 12px;
+      }
+      .footer > div:first-child {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+      .footer-right {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 6px;
+        background: #f5f6f8;
+        padding: 4px;
+        border-radius: 10px;
+      }
+      .footer-right .link-btn {
+        padding: 9px 4px;
+        font-size: 13.5px;
+        border-radius: 8px;
+        text-align: center;
+      }
+      .footer-right .link-btn.active {
+        background: #fff;
+        color: #1f2329;
+        font-weight: 500;
+        box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+      }
+      /* Prevent iOS Safari auto-zoom on focus (requires >= 16px) */
+      textarea, input[type="text"], input[type="number"], input[type="date"], input[type="time"], select {
+        font-size: 16px;
+        padding: 10px 12px;
+      }
+      .small-btn {
+        min-height: 42px;
+        padding: 8px 12px;
+        font-size: 14px;
+      }
+      .row {
+        flex-wrap: wrap;
+      }
+      .swatch {
+        width: 32px;
+        height: 32px;
+      }
+      input[type="color"] {
+        width: 40px;
+        height: 36px;
+      }
+      .checkbox-label {
+        font-size: 14px;
+        min-height: 32px;
+      }
+      .checkbox-label input[type="checkbox"] {
+        width: 18px;
+        height: 18px;
+      }
+      #previewCanvas {
+        max-height: 220px;
+      }
     }
   </style>
 </head>
@@ -825,6 +925,9 @@
         btn.classList.toggle('active', shouldOpen);
         if (shouldOpen && key === 'card') renderCanvas(previewCanvas, true);
         if (shouldOpen && key === 'editor') loadActiveLibIntoEditor();
+        if (shouldOpen && window.innerWidth <= 600) {
+          setTimeout(() => panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 60);
+        }
       }
     }
 
