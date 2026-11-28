@@ -76,12 +76,14 @@ type TaskLibrary struct {
 }
 
 type AppState struct {
-	Libraries       []TaskLibrary  `json:"libraries"`
-	ActiveLibraryID string         `json:"activeLibraryId"`
-	NoRepeat        bool           `json:"noRepeat"`
-	CurrentTask     string         `json:"currentTask"`
-	Card            CardConfig     `json:"card"`
-	Schedule        ScheduleConfig `json:"schedule"`
+	Libraries              []TaskLibrary  `json:"libraries"`
+	ActiveLibraryID        string         `json:"activeLibraryId"`
+	NoRepeat               bool           `json:"noRepeat"`
+	CurrentTask            string         `json:"currentTask"`
+	CurrentTaskLibraryID   string         `json:"currentTaskLibraryId"`
+	CurrentTaskLibraryName string         `json:"currentTaskLibraryName"`
+	Card                   CardConfig     `json:"card"`
+	Schedule               ScheduleConfig `json:"schedule"`
 
 	// Legacy fields for seamless migration from v1 state.json
 	LegacyTasks     []string `json:"tasks,omitempty"`
@@ -401,6 +403,8 @@ func (s *Store) drawOneFromLibLocked(lib *TaskLibrary) (string, bool) {
 	if !s.state.NoRepeat {
 		task := lib.Tasks[cryptoRandInt(len(lib.Tasks))]
 		s.state.CurrentTask = task
+		s.state.CurrentTaskLibraryID = lib.ID
+		s.state.CurrentTaskLibraryName = lib.Name
 		return task, true
 	}
 	if len(lib.Remaining) == 0 {
@@ -413,6 +417,8 @@ func (s *Store) drawOneFromLibLocked(lib *TaskLibrary) (string, bool) {
 	task := lib.Remaining[0]
 	lib.Remaining = lib.Remaining[1:]
 	s.state.CurrentTask = task
+	s.state.CurrentTaskLibraryID = lib.ID
+	s.state.CurrentTaskLibraryName = lib.Name
 	return task, true
 }
 
@@ -452,6 +458,8 @@ func (s *Store) drawBatchFromLibLocked(lib *TaskLibrary, count int) ([]string, i
 	}
 	if len(picked) > 0 {
 		s.state.CurrentTask = picked[len(picked)-1]
+		s.state.CurrentTaskLibraryID = lib.ID
+		s.state.CurrentTaskLibraryName = lib.Name
 	}
 	return picked, len(lib.Remaining)
 }
@@ -1040,6 +1048,9 @@ func main() {
 					if req.UpdateLibrary.Name != nil {
 						if nm := strings.TrimSpace(*req.UpdateLibrary.Name); nm != "" {
 							lib.Name = nm
+							if store.state.CurrentTaskLibraryID == lib.ID {
+								store.state.CurrentTaskLibraryName = nm
+							}
 						}
 					}
 					if req.UpdateLibrary.Tasks != nil {

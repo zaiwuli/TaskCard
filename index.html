@@ -809,6 +809,8 @@
         activeLibraryId: 'lib-1',
         noRepeat: true,
         currentTask: '',
+        currentTaskLibraryId: '',
+        currentTaskLibraryName: '',
         card: {
           ratio: '1080x1440',
           customW: 1080,
@@ -996,6 +998,7 @@
           showToast('');
           renderLibSelect();
           updateStatus();
+          updateFolderPreview();
           renderCanvas(previewCanvas, true);
         } catch (err) {
           showToast(`抽取失败：${err.message}`, true);
@@ -1022,11 +1025,14 @@
         task = lib.remaining.splice(idx, 1)[0];
       }
       state.currentTask = task;
+      state.currentTaskLibraryId = lib.id;
+      state.currentTaskLibraryName = lib.name;
       persistLocal();
       showResult(task, false);
       cardTextEl.value = task;
       showToast('');
       updateStatus();
+      updateFolderPreview();
       renderCanvas(previewCanvas, true);
     }
 
@@ -1069,9 +1075,23 @@
       return ((lib && lib.name) || '1号库').trim().replace(/[\\/:*?"<>|]/g, '') || '1号库';
     }
 
+    function getSaveTargetLibFolder() {
+      if (state.currentTaskLibraryId) {
+        const src = state.libraries.find(l => l.id === state.currentTaskLibraryId);
+        if (src && src.name) {
+          return src.name.trim().replace(/[\\/:*?"<>|]/g, '') || '1号库';
+        }
+      }
+      if (state.currentTaskLibraryName) {
+        const clean = state.currentTaskLibraryName.trim().replace(/[\\/:*?"<>|]/g, '');
+        if (clean) return clean;
+      }
+      return getCleanLibFolder();
+    }
+
     function updateFolderPreview() {
       const dateFolder = getDateFolderName();
-      const libFolder = getCleanLibFolder();
+      const libFolder = getSaveTargetLibFolder();
       folderPreviewEl.textContent = `${dateFolder}/${libFolder}/`;
       if (serverMode) {
         pickDirBtn.style.display = 'none';
@@ -1313,7 +1333,7 @@
       const exportCanvas = document.createElement('canvas');
       renderCanvas(exportCanvas, false);
       const dateFolder = getDateFolderName();
-      const libFolder = getCleanLibFolder();
+      const libFolder = getSaveTargetLibFolder();
       const fileName = buildFileName(text);
 
       if (serverMode) {
