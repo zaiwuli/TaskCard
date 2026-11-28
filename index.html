@@ -564,19 +564,34 @@
 
       <div class="field">
         <div class="field-label">
-          <span>任务内容（多行任务用单独一行 --- 隔开）</span>
+          <span>任务列表（JSON 数组格式，支持 \n 换行）</span>
           <label class="checkbox-label">
             <input type="checkbox" id="noRepeat" checked />
             本轮不重复
           </label>
         </div>
-        <textarea id="taskInput" rows="9" placeholder="任务一第一行&#10;任务一第二行&#10;---&#10;任务二"></textarea>
+        <textarea id="taskInput" rows="9" placeholder='[&#10;  "今日小挑战\n早起喝一杯温水",&#10;  "整理手机相册\n删掉 20 张不需要的照片"&#10;]'></textarea>
+        <div id="parseHint" class="hint" style="margin-top:4px;"></div>
         <div class="row" style="margin-top:8px;">
-          <input type="file" id="importTxtInput" accept=".txt,.md,.csv,text/plain" style="display:none;" />
-          <button type="button" id="importTxtBtn" class="small-btn">导入 TXT</button>
-          <button type="button" id="exportTxtBtn" class="small-btn">导出 TXT</button>
+          <input type="file" id="importTxtInput" accept=".json,.txt,.md,application/json,text/plain" style="display:none;" />
+          <button type="button" id="importTxtBtn" class="small-btn">导入 JSON</button>
+          <button type="button" id="exportTxtBtn" class="small-btn">导出 JSON</button>
+          <button type="button" id="copyPromptBtn" class="small-btn small-btn-dark">复制 AI 提示词</button>
         </div>
-        <div class="hint">若文本中包含单独一行 ---，则按 --- 拆分多行任务；否则按每行 1 条拆分。</div>
+        <details style="margin-top:10px;">
+          <summary style="font-size:12.5px; color:#646a73; cursor:pointer; user-select:none;">查看 / 编辑 AI 生成提示词模板</summary>
+          <div class="status-box" id="aiPromptText" style="margin-top:8px; font-size:12px; user-select:all;">请帮我生成 50 条关于【这里改成你的主题】的任务卡片文案。
+严格遵守以下要求：
+1. 只输出合法的 JSON 字符串数组，不要任何开场白或结束语；
+2. 每条任务可以分 1~3 行，行内换行请使用 \n，总字数控制在 10~35 字；
+3. 不要序号（如 1. 2.）和项目符号，所有任务内容不重复。
+
+输出示例：
+[
+  "今日小挑战\n早起喝一杯温水",
+  "整理手机相册\n删掉 20 张不需要的照片"
+]</div>
+        </details>
       </div>
     </div>
   </div>
@@ -621,9 +636,12 @@
     const libEnabledEl = document.getElementById('libEnabled');
     const libCountEl = document.getElementById('libCount');
     const taskInput = document.getElementById('taskInput');
+    const parseHintEl = document.getElementById('parseHint');
     const importTxtInput = document.getElementById('importTxtInput');
     const importTxtBtn = document.getElementById('importTxtBtn');
     const exportTxtBtn = document.getElementById('exportTxtBtn');
+    const copyPromptBtn = document.getElementById('copyPromptBtn');
+    const aiPromptTextEl = document.getElementById('aiPromptText');
     const noRepeatEl = document.getElementById('noRepeat');
 
     // Schedule controls
@@ -674,26 +692,57 @@
     }
 
     function parseTasksText(raw) {
-      const text = String(raw || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-      const hasDivider = /^\s*---\s*$/m.test(text);
-      const chunks = hasDivider ? text.split(/^\s*---\s*$/m) : text.split('\n');
+      let text = String(raw || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim();
+      if (!text) return { ok: true, tasks: [] };
+
+      // Strip accidental markdown code fences like ```json ... ```
+      const fenceMatch = text.match(/^```(?:json)?\s*\n?([\s\S]*?)\n?```$/i);
+      if (fenceMatch) text = fenceMatch[1].trim();
+
+      // 1. JSON array format (primary)
+      if (text.startsWith('[')) {
+        try {
+          const arr = JSON.parse(text);
+          if (!Array.isArray(arr)) {
+            return { ok: false, error: 'JSON 根节点必须是数组 [...]' };
+          }
+          const seen = new Set();
+          const out = [];
+          for (const el of arr) {
+            const item = String(el ?? '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim();
+            if (!item || seen.has(item)) continue;
+            seen.add(item);
+            out.push(item);
+          }
+          return { ok: true, tasks: out };
+        } catch (_) {
+          return { ok: false, error: 'JSON 格式不完整，请检查引号、逗号或方括号' };
+        }
+      }
+
+      // 2. Fallback: --- / === separator, blank lines, or single lines
+      let chunks;
+      if (/^\s*(?:---|===)\s*$/m.test(text)) {
+        chunks = text.split(/^\s*(?:---|===)\s*$/m);
+      } else if (/\n\s*\n/.test(text)) {
+        chunks = text.split(/\n\s*\n+/);
+      } else {
+        chunks = text.split('\n');
+      }
       const seen = new Set();
       const out = [];
       for (let item of chunks) {
-        item = item.trim();
-        if (!item) continue;
-        if (!seen.has(item)) {
-          seen.add(item);
-          out.push(item);
-        }
+        item = item.replace(/\\n/g, '\n').trim();
+        if (!item || seen.has(item)) continue;
+        seen.add(item);
+        out.push(item);
       }
-      return out;
+      return { ok: true, tasks: out };
     }
 
     function serializeTasksText(tasks) {
-      if (!Array.isArray(tasks) || tasks.length === 0) return '';
-      const hasMultiline = tasks.some(t => t.includes('\n'));
-      return hasMultiline ? tasks.join('\n---\n') : tasks.join('\n');
+      if (!Array.isArray(tasks) || tasks.length === 0) return '[]';
+      return JSON.stringify(tasks, null, 2);
     }
 
     function defaultLocalState() {
@@ -826,6 +875,8 @@
       libEnabledEl.checked = lib.enabled !== false;
       libCountEl.value = lib.count > 0 ? lib.count : '';
       taskInput.value = serializeTasksText(lib.tasks);
+      parseHintEl.textContent = `当前共 ${lib.tasks.length} 条任务（JSON 数组格式）`;
+      parseHintEl.style.color = '#8f959e';
     }
 
     function updateStatus() {
@@ -1327,8 +1378,17 @@
 
     function syncTaskListFromText(rawText) {
       const lib = getActiveLib();
-      if (!lib) return 0;
-      const list = parseTasksText(rawText);
+      if (!lib) return { ok: false, count: 0 };
+      const parsed = parseTasksText(rawText);
+      if (!parsed.ok) {
+        parseHintEl.textContent = parsed.error;
+        parseHintEl.style.color = '#dc2626';
+        return { ok: false, count: 0, error: parsed.error };
+      }
+      const list = parsed.tasks;
+      parseHintEl.textContent = `已识别 ${list.length} 条任务（自动去重并保存）`;
+      parseHintEl.style.color = '#0f766e';
+
       if (!serverMode) {
         const oldSet = new Set(lib.tasks);
         const newSet = new Set(list);
@@ -1345,7 +1405,7 @@
         renderLibSelect();
         scheduleSyncToServer({ updateLibrary: { id: lib.id, tasks: list } });
       }
-      return list.length;
+      return { ok: true, count: list.length };
     }
 
     taskInput.addEventListener('input', () => syncTaskListFromText(taskInput.value));
@@ -1357,9 +1417,14 @@
       const reader = new FileReader();
       reader.onload = () => {
         const text = String(reader.result || '');
-        taskInput.value = text;
-        const count = syncTaskListFromText(text);
-        showToast(`已导入 ${count} 条任务到「${getActiveLib().name}」`);
+        const res = syncTaskListFromText(text);
+        if (res.ok) {
+          taskInput.value = serializeTasksText(getActiveLib().tasks);
+          showToast(`已导入 ${res.count} 条任务到「${getActiveLib().name}」`);
+        } else {
+          taskInput.value = text;
+          showToast(res.error || '导入格式解析失败', true);
+        }
         importTxtInput.value = '';
       };
       reader.readAsText(file, 'utf-8');
@@ -1368,13 +1433,34 @@
     exportTxtBtn.addEventListener('click', () => {
       const lib = getActiveLib();
       const content = serializeTasksText(lib ? lib.tasks : []) + '\n';
-      const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+      const blob = new Blob([content], { type: 'application/json;charset=utf-8' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `${getCleanLibFolder()}.txt`;
+      a.download = `${getCleanLibFolder()}.json`;
       a.click();
       URL.revokeObjectURL(url);
+    });
+
+    copyPromptBtn.addEventListener('click', async () => {
+      const promptText = aiPromptTextEl.textContent.trim();
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText(promptText);
+        } else {
+          const ta = document.createElement('textarea');
+          ta.value = promptText;
+          ta.style.position = 'fixed';
+          ta.style.opacity = '0';
+          document.body.appendChild(ta);
+          ta.select();
+          document.execCommand('copy');
+          document.body.removeChild(ta);
+        }
+        showToast('已复制 AI 提示词，直接发给 AI 即可生成任务 JSON');
+      } catch (_) {
+        showToast('复制失败，请展开下方提示词手动长按复制', true);
+      }
     });
 
     drawBtn.addEventListener('click', drawTask);
