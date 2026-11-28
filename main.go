@@ -699,6 +699,26 @@ type libBatchJob struct {
 	round   int
 }
 
+func uniqueFilePath(dir, baseName string) (string, string) {
+	ext := filepath.Ext(baseName)
+	stem := strings.TrimSuffix(baseName, ext)
+	if stem == "" {
+		stem = "task"
+	}
+	if ext == "" {
+		ext = ".png"
+	}
+	candidate := stem + ext
+	full := filepath.Join(dir, candidate)
+	for i := 2; ; i++ {
+		if _, err := os.Stat(full); os.IsNotExist(err) {
+			return full, candidate
+		}
+		candidate = fmt.Sprintf("%s_%d%s", stem, i, ext)
+		full = filepath.Join(dir, candidate)
+	}
+}
+
 func (s *Store) runBatch(countOverride int, dateStr, suffix, onlyLibID, trigger string) (map[string]any, error) {
 	if dateStr == "" {
 		dateStr = time.Now().Format("2006-01-02")
@@ -756,7 +776,6 @@ func (s *Store) runBatch(countOverride int, dateStr, suffix, onlyLibID, trigger 
 	}
 
 	dateFolder := formatDateFolder(dateStr, suffix)
-	tsPrefix := time.Now().Format("150405")
 	totalSaved := 0
 	partSummaries := make([]string, 0, len(jobs))
 	savedFiles := make([]string, 0)
@@ -774,18 +793,17 @@ func (s *Store) runBatch(countOverride int, dateStr, suffix, onlyLibID, trigger 
 			return nil, err
 		}
 
-		for idx, task := range job.tasks {
+		for _, task := range job.tasks {
 			pngBytes, err := s.renderCardPNG(task, dateStr, cfg)
 			if err != nil {
 				return nil, err
 			}
 			firstLine := strings.Split(task, "\n")[0]
-			cleanTitle := truncateRunes(sanitizeSegment(firstLine), 16)
+			cleanTitle := truncateRunes(sanitizeSegment(firstLine), 24)
 			if cleanTitle == "" {
 				cleanTitle = "task"
 			}
-			fileName := fmt.Sprintf("%02d_%s_%s.png", idx+1, tsPrefix, cleanTitle)
-			fullPath := filepath.Join(targetDir, fileName)
+			fullPath, fileName := uniqueFilePath(targetDir, cleanTitle+".png")
 			if err := os.WriteFile(fullPath, pngBytes, 0o644); err != nil {
 				return nil, err
 			}
@@ -1253,10 +1271,15 @@ func main() {
 			writeJSON(w, http.StatusInternalServerError, map[string]any{"ok": false, "error": err.Error()})
 			return
 		}
-		targetFile := filepath.Join(targetDir, fileName)
+		targetFile, finalName := uniqueFilePath(targetDir, fileName)
 		if err := os.WriteFile(targetFile, imgBytes, 0o644); err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]any{"ok": false, "error": err.Error()})
 			return
+		}
+		if libFolder != "" {
+			relPath = filepath.ToSlash(filepath.Join(dateFolder, libFolder, finalName))
+		} else {
+			relPath = filepath.ToSlash(filepath.Join(dateFolder, finalName))
 		}
 		writeJSON(w, http.StatusOK, map[string]any{
 			"ok":   true,

@@ -1317,11 +1317,9 @@
     }
 
     function buildFileName(text) {
-      const now = new Date();
-      const ts = `${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}${String(now.getSeconds()).padStart(2, '0')}`;
       const firstLine = (text || 'task').split(/\r?\n/)[0];
-      const clean = firstLine.replace(/[\\/:*?"<>|]/g, '').trim().slice(0, 16) || 'task';
-      return `${ts}_${clean}.png`;
+      const clean = firstLine.replace(/[\\/:*?"<>|]/g, '').trim().slice(0, 24) || 'task';
+      return `${clean}.png`;
     }
 
     async function saveImage() {
