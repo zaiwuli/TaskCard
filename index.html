@@ -268,6 +268,79 @@
       line-height: 1.6;
       white-space: pre-line;
     }
+    .sched-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+    .sched-card {
+      background: #f8f9fb;
+      border: 1px solid #e5e6eb;
+      border-radius: 12px;
+      padding: 12px;
+    }
+    .sched-card.active-card {
+      border-color: #1f2329;
+      background: #ffffff;
+    }
+    .sched-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 10px;
+      flex-wrap: wrap;
+    }
+    .sched-title {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      color: #1f2329;
+      cursor: pointer;
+    }
+    .sched-badge {
+      font-size: 11.5px;
+      font-weight: 400;
+      color: #646a73;
+      background: #eff0f1;
+      padding: 2px 7px;
+      border-radius: 99px;
+    }
+    .sched-actions {
+      display: flex;
+      gap: 6px;
+    }
+    .mini-btn {
+      padding: 4px 8px;
+      border-radius: 6px;
+      border: 1px solid #dee0e3;
+      background: #fff;
+      color: #1f2329;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    .mini-btn:hover { background: #f2f3f5; }
+    .mini-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+    .sched-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+    .sched-grid label {
+      display: block;
+      font-size: 11.5px;
+      color: #8f959e;
+      margin-bottom: 4px;
+    }
+    .sched-last {
+      margin-top: 8px;
+      font-size: 11.5px;
+      color: #0f766e;
+      word-break: break-all;
+    }
     input[type="range"] { width: 100%; accent-color: #1f2329; }
     input[type="color"] {
       width: 34px;
@@ -404,36 +477,22 @@
       </div>
     </div>
 
-    <!-- 定时任务面板 -->
+    <!-- 定时任务面板（按仓库可视化列表） -->
     <div id="schedulePanel" class="panel">
       <div class="field">
         <div class="field-label">
-          <label class="checkbox-label">
-            <input type="checkbox" id="schedEnabled" />
-            开启每日定时按库自动生成
-          </label>
+          <span>各任务库定时生成计划（独立时间与每日张数）</span>
           <span id="schedModeTag" style="font-size:12px;"></span>
         </div>
       </div>
 
-      <div class="field">
-        <div class="row">
-          <div>
-            <div class="field-label"><span>每天执行时间</span></div>
-            <input type="time" id="schedTime" value="00:00" />
-          </div>
-          <div>
-            <div class="field-label"><span>每库默认张数</span></div>
-            <input type="number" id="schedCount" value="20" min="1" max="500" />
-          </div>
-        </div>
-      </div>
+      <div id="schedList" class="sched-list"></div>
 
       <div class="field">
         <div class="field-label">
-          <span>日期目录后缀（留空则直接 20261126/库名/）</span>
+          <span>日期目录后缀（留空则直接 20261128/库名/）</span>
         </div>
-        <input type="text" id="schedSuffix" value="" placeholder="留空即可，自动建 20261126/1号库/ ..." />
+        <input type="text" id="schedSuffix" value="" placeholder="留空即可，自动建 20261128/1号库/ ..." />
       </div>
 
       <div class="field">
@@ -445,14 +504,12 @@
 
       <div class="field">
         <div class="row">
-          <button type="button" id="saveSchedBtn" class="small-btn small-btn-dark" style="flex:1 !important;">保存定时设置</button>
-          <button type="button" id="runBatchNowBtn" class="small-btn" style="flex:1 !important;">立即按库批量生成</button>
+          <button type="button" id="saveSchedBtn" class="small-btn small-btn-dark" style="flex:1 !important;">保存全部定时设置</button>
+          <button type="button" id="runBatchNowBtn" class="small-btn" style="flex:1 !important;">全部启用库立即生成</button>
         </div>
       </div>
 
-      <div class="field">
-        <div id="schedStatusBox" class="status-box">尚未执行定时任务</div>
-      </div>
+      <div id="schedOfflineHint" class="hint" style="display:none;"></div>
     </div>
 
     <!-- 配图设置面板 -->
@@ -553,16 +610,6 @@
       </div>
 
       <div class="field">
-        <div class="row">
-          <label class="checkbox-label" style="flex:1.2;">
-            <input type="checkbox" id="libEnabled" checked />
-            参与定时生成
-          </label>
-          <input type="number" id="libCount" min="0" max="500" placeholder="本库张数(0=用默认)" title="填 0 或留空表示沿用定时任务的默认张数" />
-        </div>
-      </div>
-
-      <div class="field">
         <div class="field-label">
           <span>任务列表（JSON 数组格式，支持 \n 换行）</span>
           <label class="checkbox-label">
@@ -575,7 +622,8 @@
         <div class="row" style="margin-top:8px;">
           <input type="file" id="importTxtInput" accept=".json,.txt,.md,application/json,text/plain" style="display:none;" />
           <button type="button" id="importTxtBtn" class="small-btn">导入 JSON</button>
-          <button type="button" id="exportTxtBtn" class="small-btn">导出 JSON</button>
+          <button type="button" id="exportJsonBtn" class="small-btn">导出 JSON</button>
+          <button type="button" id="exportPlainTxtBtn" class="small-btn">导出纯文本 TXT</button>
           <button type="button" id="copyPromptBtn" class="small-btn small-btn-dark">复制 AI 提示词</button>
         </div>
         <details style="margin-top:10px;">
@@ -633,27 +681,24 @@
     const libNameInput = document.getElementById('libNameInput');
     const addLibBtn = document.getElementById('addLibBtn');
     const delLibBtn = document.getElementById('delLibBtn');
-    const libEnabledEl = document.getElementById('libEnabled');
-    const libCountEl = document.getElementById('libCount');
     const taskInput = document.getElementById('taskInput');
     const parseHintEl = document.getElementById('parseHint');
     const importTxtInput = document.getElementById('importTxtInput');
     const importTxtBtn = document.getElementById('importTxtBtn');
-    const exportTxtBtn = document.getElementById('exportTxtBtn');
+    const exportJsonBtn = document.getElementById('exportJsonBtn');
+    const exportPlainTxtBtn = document.getElementById('exportPlainTxtBtn');
     const copyPromptBtn = document.getElementById('copyPromptBtn');
     const aiPromptTextEl = document.getElementById('aiPromptText');
     const noRepeatEl = document.getElementById('noRepeat');
 
     // Schedule controls
-    const schedEnabledEl = document.getElementById('schedEnabled');
-    const schedTimeEl = document.getElementById('schedTime');
-    const schedCountEl = document.getElementById('schedCount');
+    const schedListEl = document.getElementById('schedList');
     const schedSuffixEl = document.getElementById('schedSuffix');
     const autoResetOnEmptyEl = document.getElementById('autoResetOnEmpty');
     const saveSchedBtn = document.getElementById('saveSchedBtn');
     const runBatchNowBtn = document.getElementById('runBatchNowBtn');
     const schedModeTag = document.getElementById('schedModeTag');
-    const schedStatusBox = document.getElementById('schedStatusBox');
+    const schedOfflineHint = document.getElementById('schedOfflineHint');
 
     // Card controls
     const previewCanvas = document.getElementById('previewCanvas');
@@ -754,8 +799,11 @@
             tasks: [...DEFAULT_TASKS],
             remaining: [...DEFAULT_TASKS],
             round: 1,
-            enabled: true,
-            count: 0
+            enabled: false,
+            count: 20,
+            scheduleTime: '00:00',
+            lastRunDate: '',
+            lastRunSummary: ''
           }
         ],
         activeLibraryId: 'lib-1',
@@ -872,11 +920,29 @@
       const lib = getActiveLib();
       if (!lib) return;
       libNameInput.value = lib.name;
-      libEnabledEl.checked = lib.enabled !== false;
-      libCountEl.value = lib.count > 0 ? lib.count : '';
       taskInput.value = serializeTasksText(lib.tasks);
       parseHintEl.textContent = `当前共 ${lib.tasks.length} 条任务（JSON 数组格式）`;
       parseHintEl.style.color = '#8f959e';
+    }
+
+    function exportLibPlainTxt(lib) {
+      if (!lib) return;
+      const tasks = Array.isArray(lib.tasks) ? lib.tasks : [];
+      if (tasks.length === 0) {
+        showToast(`「${lib.name}」暂无任务可导出`, true);
+        return;
+      }
+      // Pure plain text: no JSON brackets, no quotes, no markdown/AI formatting
+      const plain = tasks.map(t => String(t).replace(/\r\n/g, '\n').trim()).filter(Boolean).join('\n\n') + '\n';
+      const blob = new Blob([plain], { type: 'text/plain;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const safeName = (lib.name || '任务库').replace(/[\\/:*?"<>|]/g, '').trim() || '任务库';
+      a.href = url;
+      a.download = `${safeName}_全部任务.txt`;
+      a.click();
+      URL.revokeObjectURL(url);
+      showToast(`已导出纯文本：${safeName}_全部任务.txt（共 ${tasks.length} 条）`);
     }
 
     function updateStatus() {
@@ -1023,37 +1089,110 @@
     }
 
     function updateScheduleUI() {
-      schedEnabledEl.checked = !!state.schedule.enabled;
-      schedTimeEl.value = state.schedule.time || '00:00';
-      schedCountEl.value = state.schedule.count || 20;
       schedSuffixEl.value = state.schedule.suffix || '';
       autoResetOnEmptyEl.checked = state.schedule.autoResetOnEmpty !== false;
 
-      const enabledLibs = state.libraries.filter(l => l.enabled !== false && l.tasks.length > 0);
-      const libDesc = enabledLibs.length > 0
-        ? enabledLibs.map(l => `${l.name}(${l.count > 0 ? l.count : (state.schedule.count || 20)}张)`).join('、')
-        : '暂无已启用的非空任务库';
-
+      const enabledCount = state.libraries.filter(l => !!l.enabled).length;
       if (serverMode) {
-        schedModeTag.textContent = state.schedule.enabled ? '● 运行中' : '○ 未开启';
-        schedModeTag.style.color = state.schedule.enabled ? '#0f766e' : '#8f959e';
+        schedModeTag.textContent = enabledCount > 0 ? `● ${enabledCount} 个库已开启` : '○ 未开启';
+        schedModeTag.style.color = enabledCount > 0 ? '#0f766e' : '#8f959e';
         saveSchedBtn.disabled = false;
         runBatchNowBtn.disabled = false;
-        const lines = [
-          `定时计划：${state.schedule.enabled ? `每天 ${state.schedule.time}` : '未开启'}`,
-          `参与库：${libDesc}`,
-          state.schedule.lastRunSummary
-            ? `最近执行（${state.schedule.lastRunTime || ''}）：${state.schedule.lastRunSummary}`
-            : '最近执行：暂无记录'
-        ];
-        schedStatusBox.textContent = lines.join('\n');
+        schedOfflineHint.style.display = 'none';
       } else {
         schedModeTag.textContent = '需 Docker / NAS 运行';
         schedModeTag.style.color = '#d97706';
-        saveSchedBtn.disabled = true;
+        saveSchedBtn.disabled = false;
         runBatchNowBtn.disabled = true;
-        schedStatusBox.textContent = `当前为离线静态页；部署到 NAS Docker 后，将按「日期/任务库/」自动批量生成。\n当前参与库：${libDesc}`;
+        schedOfflineHint.style.display = 'block';
+        schedOfflineHint.textContent = '当前为离线静态页；部署到 NAS Docker 后，各仓库会按你设定的时间和张数自动在后台生成配图。';
       }
+
+      schedListEl.innerHTML = '';
+      state.libraries.forEach(lib => {
+        const card = document.createElement('div');
+        card.className = 'sched-card' + (lib.enabled ? ' active-card' : '');
+        card.dataset.libId = lib.id;
+
+        const rem = (lib.remaining || []).length;
+        const total = (lib.tasks || []).length;
+        const timeVal = lib.scheduleTime || '00:00';
+        const countVal = lib.count > 0 ? lib.count : 20;
+
+        card.innerHTML = `
+          <div class="sched-head">
+            <label class="sched-title">
+              <input type="checkbox" class="js-sched-en" ${lib.enabled ? 'checked' : ''} />
+              <span></span>
+              <span class="sched-badge">剩余 ${rem}/${total}</span>
+            </label>
+            <div class="sched-actions">
+              <button type="button" class="mini-btn js-export-txt" title="导出该仓库全部纯文本任务">导出TXT</button>
+              <button type="button" class="mini-btn js-run-one" ${serverMode ? '' : 'disabled'}>立即生成</button>
+            </div>
+          </div>
+          <div class="sched-grid">
+            <div>
+              <label>每天开始时间</label>
+              <input type="time" class="js-sched-time" value="${timeVal}" />
+            </div>
+            <div>
+              <label>每天生成数量</label>
+              <input type="number" class="js-sched-count" min="1" max="500" value="${countVal}" />
+            </div>
+          </div>
+          ${lib.lastRunSummary ? `<div class="sched-last"></div>` : ''}
+        `;
+
+        card.querySelector('.sched-title span').textContent = lib.name;
+        const lastEl = card.querySelector('.sched-last');
+        if (lastEl) lastEl.textContent = lib.lastRunSummary;
+
+        const enInput = card.querySelector('.js-sched-en');
+        enInput.addEventListener('change', () => {
+          card.classList.toggle('active-card', enInput.checked);
+        });
+
+        card.querySelector('.js-export-txt').addEventListener('click', () => {
+          exportLibPlainTxt(lib);
+        });
+
+        card.querySelector('.js-run-one').addEventListener('click', async (e) => {
+          if (!serverMode) return;
+          const btn = e.currentTarget;
+          btn.disabled = true;
+          const cnt = Math.max(1, Number(card.querySelector('.js-sched-count').value) || 20);
+          showToast(`正在生成「${lib.name}」(${cnt} 张)...`);
+          try {
+            const res = await fetch('/api/batch', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                libraryId: lib.id,
+                count: cnt,
+                date: dateValueEl.value || getTodayStr(),
+                suffix: (schedSuffixEl.value || '').trim()
+              })
+            });
+            const data = await res.json();
+            if (data.state) state = data.state;
+            renderLibSelect();
+            updateStatus();
+            updateScheduleUI();
+            if (!data.ok) {
+              showToast(data.error || '生成失败', true);
+            } else {
+              showToast(data.summary || `已完成：${lib.name}`);
+            }
+          } catch (err) {
+            showToast(`生成失败：${err.message}`, true);
+          } finally {
+            btn.disabled = false;
+          }
+        });
+
+        schedListEl.appendChild(card);
+      });
     }
 
     function wrapLines(ctx, text, maxWidth) {
@@ -1322,7 +1461,7 @@
         showToast(`已新建任务库：${trimmed}`);
       } else {
         const id = `lib-${Date.now()}`;
-        state.libraries.push({ id, name: trimmed, tasks: [], remaining: [], round: 1, enabled: true, count: 0 });
+        state.libraries.push({ id, name: trimmed, tasks: [], remaining: [], round: 1, enabled: false, count: 20, scheduleTime: '00:00', lastRunDate: '', lastRunSummary: '' });
         state.activeLibraryId = id;
         persistLocal();
         applyStateToUI();
@@ -1357,23 +1496,6 @@
       updateFolderPreview();
       updateScheduleUI();
       scheduleSyncToServer({ updateLibrary: { id: lib.id, name: nm } });
-    });
-
-    libEnabledEl.addEventListener('change', () => {
-      const lib = getActiveLib();
-      if (!lib) return;
-      lib.enabled = libEnabledEl.checked;
-      updateScheduleUI();
-      scheduleSyncToServer({ updateLibrary: { id: lib.id, enabled: lib.enabled } });
-    });
-
-    libCountEl.addEventListener('input', () => {
-      const lib = getActiveLib();
-      if (!lib) return;
-      const c = Math.max(0, Number(libCountEl.value) || 0);
-      lib.count = c;
-      updateScheduleUI();
-      scheduleSyncToServer({ updateLibrary: { id: lib.id, count: c } });
     });
 
     function syncTaskListFromText(rawText) {
@@ -1430,7 +1552,7 @@
       reader.readAsText(file, 'utf-8');
     });
 
-    exportTxtBtn.addEventListener('click', () => {
+    exportJsonBtn.addEventListener('click', () => {
       const lib = getActiveLib();
       const content = serializeTasksText(lib ? lib.tasks : []) + '\n';
       const blob = new Blob([content], { type: 'application/json;charset=utf-8' });
@@ -1440,6 +1562,10 @@
       a.download = `${getCleanLibFolder()}.json`;
       a.click();
       URL.revokeObjectURL(url);
+    });
+
+    exportPlainTxtBtn.addEventListener('click', () => {
+      exportLibPlainTxt(getActiveLib());
     });
 
     copyPromptBtn.addEventListener('click', async () => {
@@ -1497,22 +1623,46 @@
     });
 
     saveSchedBtn.addEventListener('click', async () => {
-      state.schedule.enabled = schedEnabledEl.checked;
-      state.schedule.time = schedTimeEl.value || '00:00';
-      state.schedule.count = Math.max(1, Number(schedCountEl.value) || 20);
+      const updates = [];
+      schedListEl.querySelectorAll('.sched-card').forEach(card => {
+        const id = card.dataset.libId;
+        const enabled = card.querySelector('.js-sched-en').checked;
+        const scheduleTime = card.querySelector('.js-sched-time').value || '00:00';
+        const count = Math.max(1, Number(card.querySelector('.js-sched-count').value) || 20);
+        updates.push({ id, enabled, scheduleTime, count });
+        const lib = state.libraries.find(l => l.id === id);
+        if (lib) {
+          lib.enabled = enabled;
+          lib.scheduleTime = scheduleTime;
+          lib.count = count;
+        }
+      });
+
       state.schedule.suffix = (schedSuffixEl.value || '').trim();
       state.schedule.autoResetOnEmpty = autoResetOnEmptyEl.checked;
+      state.schedule.enabled = updates.some(u => u.enabled);
+
+      if (!serverMode) {
+        persistLocal();
+        updateScheduleUI();
+        showToast('定时配置已保存到本地');
+        return;
+      }
+
       try {
         const res = await fetch('/api/state', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ schedule: state.schedule })
+          body: JSON.stringify({
+            schedule: state.schedule,
+            updateSchedules: updates
+          })
         });
         const data = await res.json();
         if (data.ok && data.state) {
           state = data.state;
           updateScheduleUI();
-          showToast('定时任务设置已保存');
+          showToast('各任务库定时配置已保存');
         }
       } catch (err) {
         showToast(`保存失败：${err.message}`, true);

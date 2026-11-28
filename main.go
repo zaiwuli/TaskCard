@@ -63,13 +63,16 @@ type ScheduleConfig struct {
 }
 
 type TaskLibrary struct {
-	ID        string   `json:"id"`
-	Name      string   `json:"name"`
-	Tasks     []string `json:"tasks"`
-	Remaining []string `json:"remaining"`
-	Round     int      `json:"round"`
-	Enabled   bool     `json:"enabled"` // whether included in scheduled batch generation
-	Count     int      `json:"count"`   // 0 = use global Schedule.Count
+	ID             string   `json:"id"`
+	Name           string   `json:"name"`
+	Tasks          []string `json:"tasks"`
+	Remaining      []string `json:"remaining"`
+	Round          int      `json:"round"`
+	Enabled        bool     `json:"enabled"`        // whether included in daily scheduled generation
+	Count          int      `json:"count"`          // daily generation count for this library
+	ScheduleTime   string   `json:"scheduleTime"`   // "HH:MM", e.g. "00:00"
+	LastRunDate    string   `json:"lastRunDate"`    // "YYYY-MM-DD"
+	LastRunSummary string   `json:"lastRunSummary"` // latest run summary for this library
 }
 
 type AppState struct {
@@ -118,13 +121,14 @@ func defaultState() AppState {
 	return AppState{
 		Libraries: []TaskLibrary{
 			{
-				ID:        "lib-1",
-				Name:      "1号库",
-				Tasks:     tasks,
-				Remaining: shuffleStrings(tasks),
-				Round:     1,
-				Enabled:   true,
-				Count:     0,
+				ID:           "lib-1",
+				Name:         "1号库",
+				Tasks:        tasks,
+				Remaining:    shuffleStrings(tasks),
+				Round:        1,
+				Enabled:      schedEnabled,
+				Count:        schedCount,
+				ScheduleTime: schedTime,
 			},
 		},
 		ActiveLibraryID: "lib-1",
@@ -248,6 +252,12 @@ func newStore(dataDir, outputDir, fontsDir string) (*Store, error) {
 				loaded.Libraries = defaultState().Libraries
 				loaded.ActiveLibraryID = loaded.Libraries[0].ID
 			}
+			if loaded.Schedule.Time == "" {
+				loaded.Schedule.Time = "00:00"
+			}
+			if loaded.Schedule.Count <= 0 {
+				loaded.Schedule.Count = 20
+			}
 			for i := range loaded.Libraries {
 				if loaded.Libraries[i].ID == "" {
 					loaded.Libraries[i].ID = fmt.Sprintf("lib-%d", i+1)
@@ -264,15 +274,15 @@ func newStore(dataDir, outputDir, fontsDir string) (*Store, error) {
 				if loaded.Libraries[i].Remaining == nil {
 					loaded.Libraries[i].Remaining = []string{}
 				}
+				if loaded.Libraries[i].ScheduleTime == "" {
+					loaded.Libraries[i].ScheduleTime = loaded.Schedule.Time
+				}
+				if loaded.Libraries[i].Count <= 0 {
+					loaded.Libraries[i].Count = loaded.Schedule.Count
+				}
 			}
 			if loaded.ActiveLibraryID == "" {
 				loaded.ActiveLibraryID = loaded.Libraries[0].ID
-			}
-			if loaded.Schedule.Time == "" {
-				loaded.Schedule.Time = "00:00"
-			}
-			if loaded.Schedule.Count <= 0 {
-				loaded.Schedule.Count = 20
 			}
 			st.state = loaded
 			_ = st.saveLocked()
@@ -786,6 +796,14 @@ func (s *Store) runBatch(countOverride int, dateStr, suffix, onlyLibID, trigger 
 	}
 	s.state.Schedule.LastRunTime = now.Format("2006-01-02 15:04:05")
 	s.state.Schedule.LastRunSummary = summary
+	for _, job := range jobs {
+		if lib := s.findLibraryLocked(job.libID); lib != nil {
+			if trigger == "定时" {
+				lib.LastRunDate = now.Format("2006-01-02")
+			}
+			lib.LastRunSummary = fmt.Sprintf("[%s %s] 生成 %d 张 -> %s/%s/ (剩%d)", trigger, now.Format("01-02 15:04"), len(job.tasks), dateFolder, sanitizeSegment(job.libName), job.rem)
+		}
+	}
 	_ = s.saveLocked()
 	s.mu.Unlock()
 
@@ -809,19 +827,43 @@ func (s *Store) startScheduler() {
 			today := now.Format("2006-01-02")
 			hhmm := now.Format("15:04")
 
+			type dueJob struct {
+				libID  string
+				count  int
+				suffix string
+			}
+			var due []dueJob
+
 			s.mu.Lock()
-			enabled := s.state.Schedule.Enabled
-			targetTime := strings.TrimSpace(s.state.Schedule.Time)
-			lastRunDate := s.state.Schedule.LastRunDate
 			suffix := s.state.Schedule.Suffix
+			defaultCount := s.state.Schedule.Count
+			if defaultCount <= 0 {
+				defaultCount = 20
+			}
+			for _, lib := range s.state.Libraries {
+				if !lib.Enabled || len(lib.Tasks) == 0 {
+					continue
+				}
+				targetTime := strings.TrimSpace(lib.ScheduleTime)
+				if targetTime == "" {
+					targetTime = strings.TrimSpace(s.state.Schedule.Time)
+				}
+				if targetTime == "" || lib.LastRunDate == today {
+					continue
+				}
+				if hhmm == targetTime {
+					cnt := lib.Count
+					if cnt <= 0 {
+						cnt = defaultCount
+					}
+					due = append(due, dueJob{libID: lib.ID, count: cnt, suffix: suffix})
+				}
+			}
 			s.mu.Unlock()
 
-			if !enabled || targetTime == "" || lastRunDate == today {
-				continue
-			}
-			if hhmm == targetTime {
-				if _, err := s.runBatch(0, today, suffix, "", "定时"); err != nil {
-					log.Printf("scheduled batch failed: %v", err)
+			for _, d := range due {
+				if _, err := s.runBatch(d.count, today, d.suffix, d.libID, "定时"); err != nil {
+					log.Printf("scheduled batch failed for %s: %v", d.libID, err)
 				}
 			}
 		}
@@ -935,13 +977,20 @@ func main() {
 				NoRepeat        *bool   `json:"noRepeat"`
 				Card            *CardConfig     `json:"card"`
 				Schedule        *ScheduleConfig `json:"schedule"`
-				UpdateLibrary   *struct {
-					ID      string    `json:"id"`
-					Name    *string   `json:"name"`
-					Tasks   *[]string `json:"tasks"`
-					Enabled *bool     `json:"enabled"`
-					Count   *int      `json:"count"`
+				UpdateLibrary *struct {
+					ID           string    `json:"id"`
+					Name         *string   `json:"name"`
+					Tasks        *[]string `json:"tasks"`
+					Enabled      *bool     `json:"enabled"`
+					Count        *int      `json:"count"`
+					ScheduleTime *string   `json:"scheduleTime"`
 				} `json:"updateLibrary"`
+				UpdateSchedules []struct {
+					ID           string `json:"id"`
+					Enabled      bool   `json:"enabled"`
+					Count        int    `json:"count"`
+					ScheduleTime string `json:"scheduleTime"`
+				} `json:"updateSchedules"`
 				AddLibrary *struct {
 					Name string `json:"name"`
 				} `json:"addLibrary"`
@@ -960,13 +1009,14 @@ func main() {
 				}
 				id := fmt.Sprintf("lib-%d", time.Now().UnixNano())
 				store.state.Libraries = append(store.state.Libraries, TaskLibrary{
-					ID:        id,
-					Name:      name,
-					Tasks:     []string{},
-					Remaining: []string{},
-					Round:     1,
-					Enabled:   true,
-					Count:     0,
+					ID:           id,
+					Name:         name,
+					Tasks:        []string{},
+					Remaining:    []string{},
+					Round:        1,
+					Enabled:      false,
+					Count:        20,
+					ScheduleTime: "00:00",
 				})
 				store.state.ActiveLibraryID = id
 			}
@@ -1000,10 +1050,28 @@ func main() {
 					}
 					if req.UpdateLibrary.Count != nil {
 						c := *req.UpdateLibrary.Count
-						if c < 0 {
-							c = 0
+						if c < 1 {
+							c = 1
 						}
 						lib.Count = c
+					}
+					if req.UpdateLibrary.ScheduleTime != nil {
+						if t := strings.TrimSpace(*req.UpdateLibrary.ScheduleTime); t != "" {
+							lib.ScheduleTime = t
+						}
+					}
+				}
+			}
+			if len(req.UpdateSchedules) > 0 {
+				for _, item := range req.UpdateSchedules {
+					if lib := store.findLibraryLocked(item.ID); lib != nil {
+						lib.Enabled = item.Enabled
+						if item.Count > 0 {
+							lib.Count = item.Count
+						}
+						if t := strings.TrimSpace(item.ScheduleTime); t != "" {
+							lib.ScheduleTime = t
+						}
 					}
 				}
 			}
